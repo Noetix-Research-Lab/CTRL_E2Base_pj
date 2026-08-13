@@ -6,9 +6,7 @@
 src/legged_rl/legged_robot/e2/legged_e2_description/urdf/e2_23dof.urdf
 ```
 
-驱动自由度组成是 12 个腿关节、3 个腰关节和 8 个手臂关节。控制器仅保留
-WALK、DANCE、DOWN 和 UP 四类策略模式；旧 E1 24DOF 配置、策略、动作文件以及
-GMT_CYB、RGMT、RGMT_NO_ROOT_POS 模式均已移除。
+驱动自由度组成是 12 个腿关节、3 个腰关节和 8 个手臂关节。
 
 ## 构建
 
@@ -23,8 +21,6 @@ GMT_CYB、RGMT、RGMT_NO_ROOT_POS 模式均已移除。
 首先将 E2 专用策略和动作文件放入：
 
 ```text
-src/legged_rl/rl_controller/rl_controllers/policy/e2/policyWalk_23dof.onnx
-src/legged_rl/rl_controller/rl_controllers/policy/e2/policyDance_23dof.onnx
 src/legged_rl/rl_controller/rl_controllers/motion_files/e2/yinggewu_23dof.json
 src/legged_rl/rl_controller/rl_controllers/policy/e2/policyDown_e2_10w.onnx
 src/legged_rl/rl_controller/rl_controllers/policy/e2/policyUp_e2_10w.onnx
@@ -54,8 +50,7 @@ ONNX `joint_names` metadata 必须和 `config/e2_23dof_ac.yaml` 的
 ```
 
 注意：URDF、控制器和启动链路已经切换到 E2；EtherCAT PDO、电机方向、零偏和
-通道布局仍必须根据 E2 实机电气映射核验后才能安全下发。不得使用 E1 的 24
-通道映射直接驱动 E2。
+通道布局仍必须根据 E2 实机电气映射核验后才能安全下发。
 
 ## 主要配置
 

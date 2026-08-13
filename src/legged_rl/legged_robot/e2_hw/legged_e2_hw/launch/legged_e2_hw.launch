@@ -1,0 +1,24 @@
+<?xml version="1.0" ?>
+<launch>
+    <arg name="robot_type" default="e2" doc="Robot type: [e2]"/>
+    <arg name="robot_model" default="e2_23dof" doc="Robot model: [e2_23dof]"/>
+    <arg name="urdfFile" default="$(find legged_e2_description)/urdf/e2_23dof.urdf"/>
+    <arg name="description_name"   default="legged_robot_description"/>
+    <arg name="enable_timing_metrics" default="false"/>
+    <param name="legged_robot_description" command="$(find xacro)/xacro $(arg urdfFile)
+    robot_type:=$(arg robot_type)
+ "/>
+    <node name="generate_urdf" pkg="legged_common" type="generate_urdf.sh" output="screen"
+    args="$(arg urdfFile) $(arg robot_type)"/>
+    
+    <rosparam file="$(find rl_controllers)/config/e2_kd.yaml" command="load"/>
+    <rosparam file="$(find legged_e2_hw)/config/ethercat_config.yaml" command="load"/>
+    <rosparam file="$(find legged_e2_hw)/config/e2.yaml" command="load"/>
+    <!-- Override after YAML loading so the recorder switch controls the
+         hardware-loop timing publisher without editing persistent config. -->
+    <param name="/legged_e2_hw/enable_timing_metrics"
+           value="$(arg enable_timing_metrics)"/>
+    
+    <node name="legged_e2_hw" pkg="legged_e2_hw" type="legged_e2_hw" output="screen"/>
+    
+</launch>

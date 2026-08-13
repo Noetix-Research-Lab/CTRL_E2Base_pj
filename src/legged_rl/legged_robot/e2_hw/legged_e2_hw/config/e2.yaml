@@ -1,0 +1,47 @@
+legged_e2_hw:
+  loop_frequency: 500
+  # Report control-period jitter above 200 us. Deadline misses are always reported.
+  cycle_time_error_threshold: 0.0002
+  thread_priority: 95
+  # Deployment script changes this to true after installing affinity/rtprio/memlock settings.
+  require_realtime: true
+  # CPU core index to pin the RT control loop thread to. -1 disables pinning.
+  # Set to an isolated core (kernel cmdline: isolcpus=N nohz_full=N rcu_nocbs=N)
+  # for lowest jitter; avoid core 0. Requires CAP_SYS_NICE.
+  cpu_affinity: 4
+  # SOEM process-data receive timeout. Must leave budget inside the 2 ms loop.
+  ethercat_receive_timeout_us: 500
+  # Publish allocation-free RT loop samples through a non-RT batching callback.
+  enable_timing_metrics: false
+  contact_threshold: 200
+  # Asynchronous parallel-ankle solver debug CSV. The RT loop only pushes
+  # fixed-size rows to an SPSC queue; a non-RT worker performs file I/O.
+  enable_ankle_log: false
+  ankle_log_path: /home/noetix/{timestamp}_ankle.csv
+  # Log fault transitions/recovery and one persistent-fault summary per second.
+  # The RT thread only pushes fixed-size records to a lock-free SPSC queue.
+  enable_motor_error_log: true
+  # Enable once-per-second CheckAndPrint terminal temperature output.
+  enable_check_and_print: false
+  # Enable one normal temperature/status record per joint per second.
+  # Keep disabled in real-time deployment; require_realtime forbids enabling it.
+  enable_motor_non_error_log: false
+  # Enable raw INKEX motor/MOS temperature reporting without thermal protection conversion.
+  enable_thermal_protection_limit_release: true
+  # Motor error/temperature log file path. Set to ""/none/off to disable async file logging.
+  # Relative paths are resolved from the launch working directory.
+  motor_error_log_path: /home/noetix/{timestamp}.log
+  # Medulla PDO cumulative CAN-error detector. Bit 0..8 of enabled_mask map to
+  # node1/can1..node3/can3. Detection runs only for valid EtherCAT cycles;
+  # logging is handed to a non-RT worker. Any detected fault latches the
+  # hardware fail-closed command until the hardware node is restarted.
+  can_error_detection:
+    enabled: true
+    delta_threshold: 200
+    fault_consecutive_samples: 50
+    recovery_consecutive_samples: 50
+    enabled_mask: 511
+    log_path: /home/noetix/{timestamp}_can.log
+
+#*               hard    rtprio          99
+#*               soft    rtprio          99

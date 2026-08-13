@@ -1,0 +1,146 @@
+# 串口配置
+sbus_port: '/dev/ttyUSB0'
+
+# WFLY 接收机经串口转换器输出 115200 baud, 8N1；轴归一化沿用原实现的 992±671。
+sbus:
+  profile: wfly
+  serial:
+    baudrate: 115200
+    parity: none
+    stopbits: 1
+    timeout: 0.001
+    signal_timeout: 0.2
+    reconnect_delay: 1.0
+  axes:
+    - {channel: 0, minimum: 321, center: 992, maximum: 1663}
+    - {channel: 1, minimum: 321, center: 992, maximum: 1663}
+    - {channel: 2, minimum: 321, center: 992, maximum: 1663}
+    - {channel: 3, minimum: 321, center: 992, maximum: 1663}
+
+# 通道映射配置（可选，如果不配置则使用代码默认值）
+channel_mappings:
+  # SA 三档拨杆 (ch[4]): 上=353, 中=1024, 下=1695 → buttons 0,1,2
+  '0': {'channel': 4, 'condition': 'low', 'threshold_low': 700}      # SA-UP
+  '1': {'channel': 4, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100}  # SA-MID
+  '2': {'channel': 4, 'condition': 'high', 'threshold_high': 1400}   # SA-DOWN
+
+  # SB 三档拨杆 (ch[5]): 上=353, 中=1024, 下=1695 → buttons 3,4,5
+  '3': {'channel': 5, 'condition': 'low', 'threshold_low': 700}      # SB-UP
+  '4': {'channel': 5, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100}  # SB-MID
+  '5': {'channel': 5, 'condition': 'high', 'threshold_high': 1400}   # SB-DOWN
+
+  # SC 三档拨杆 (ch[6]): 上=353, 中=1024, 下=1695 → buttons 6,7,8
+  '6': {'channel': 6, 'condition': 'low', 'threshold_low': 700}      # SC-UP
+  '7': {'channel': 6, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100}  # SC-MID
+  '8': {'channel': 6, 'condition': 'high', 'threshold_high': 1400}   # SC-DOWN
+
+  # SD 三档拨杆 (ch[7]): 上=353, 中=1024, 下=1695 → buttons 9,10,11
+  '9': {'channel': 7, 'condition': 'low', 'threshold_low': 700}      # SD-UP
+  '10': {'channel': 7, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100} # SD-MID
+  '11': {'channel': 7, 'condition': 'high', 'threshold_high': 1400}  # SD-DOWN
+
+  # SE 三档拨杆 (ch[8]): 上=353, 中=1024, 下=1695 → buttons 12,13,14
+  '12': {'channel': 8, 'condition': 'low', 'threshold_low': 700}      # SD-UP
+  '13': {'channel': 8, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100} # SE-MID
+  '14': {'channel': 8, 'condition': 'high', 'threshold_high': 1400}  # SD-DOWN
+
+  # SG 三档拨杆 (ch[10]): 上=353, 中=1024, 下=1695 → buttons 17,18,19
+  '17': {'channel': 10, 'condition': 'low', 'threshold_low': 700}      # SD-UP
+  '18': {'channel': 10, 'condition': 'mid', 'threshold_mid_low': 950, 'threshold_mid_high': 1100} # SD-MID
+  '19': {'channel': 10, 'condition': 'high', 'threshold_high': 1400}  # SD-DOWN
+
+teleop:
+  # 持续控制：摇杆控制运动（需要按住死区按钮）
+  walk:
+    type: topic
+    message_type: geometry_msgs/Twist
+    topic_name: cmd_vel
+    # deadman_buttons: [15]  # 改为 SF-UP 作为死区按钮，按住才能控制
+    axis_mappings:
+      # 左摇杆上下 (axis[2]) → 前进/后退
+      - axis: 2
+        target: linear.x
+        scale: 1.0
+
+      # 左摇杆左右 (axis[3]) → 左右平移（改为有效）
+      - axis: 3
+        target: linear.y
+        scale: -0.5
+        
+      # 右摇杆左右 (axis[0]) → 旋转
+      - axis: 0
+        target: angular.z
+        scale: -1.0
+
+  # 边沿触发：单次指令
+  start_control:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: start_control
+    deadman_buttons: [9]  # SD-UP
+    message_value:
+      - target: data
+        value: 1.0
+
+  shut_down:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: shut_down
+    deadman_buttons: [11]  # SD-DOWN
+    message_value:
+      - target: data
+        value: 1.0
+
+  lie2stand:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: lie2stand
+    deadman_buttons: [0]  # SA-UP
+    message_value:
+      - target: data
+        value: 1.0
+
+  stand2lie:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: stand2lie
+    deadman_buttons: [2]  # SA-DOWN
+    message_value:
+      - target: data
+        value: 1.0
+
+  walk_mode:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: walk_mode
+    deadman_buttons: [6]  # SC-UP
+    message_value:
+      - target: data
+        value: 1.0
+
+  walk2stand:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: walk2stand
+    deadman_buttons: [8]  # SC-DOWN
+    message_value:
+      - target: data
+        value: 1.0
+
+  vel_value1:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: vel_value1
+    deadman_buttons: [3]  # SB-UP
+    message_value:
+      - target: data
+        value: 0.5
+
+  vel_value2:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: vel_value2
+    deadman_buttons: [5]  # SB-DOWN
+    message_value:
+      - target: data
+        value: -0.5

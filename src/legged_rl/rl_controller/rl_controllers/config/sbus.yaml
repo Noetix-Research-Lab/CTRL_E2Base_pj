@@ -1,0 +1,145 @@
+# 串口配置
+sbus_port: '/dev/ttyUSB0'
+
+# 旧版标准 SBUS：100000 baud, 8E2；轴标定约为 282/1002/1722。
+sbus:
+  profile: legacy
+  serial:
+    baudrate: 100000
+    parity: even
+    stopbits: 2
+    timeout: 0.01
+    signal_timeout: 0.2
+    reconnect_delay: 1.0
+  axes:
+    - {channel: 0, minimum: 282, center: 1002, maximum: 1722}
+    - {channel: 1, minimum: 282, center: 1002, maximum: 1722, invert: true}
+    - {channel: 2, minimum: 282, center: 1002, maximum: 1722}
+    - {channel: 3, minimum: 282, center: 1002, maximum: 1722}
+
+# SBUS 通道到虚拟按钮的映射
+channel_mappings:
+  '0':  {channel: 5,  condition: eq, value: 1722}
+  '1':  {channel: 6,  condition: eq, value: 1722}
+  '2':  {channel: 5,  condition: eq, value: 282}
+  '3':  {channel: 6,  condition: eq, value: 282}
+  '5':  {channel: 8,  condition: eq, value: 1722}
+  '6':  {channel: 9,  condition: eq, value: 1722}
+  '7':  {channel: 10, condition: eq, value: 1722}
+  '8':  {channel: 11, condition: eq, value: 1722}
+  '9':  {channel: 7,  condition: eq, value: 282}
+  '10': {channel: 4,  condition: eq, value: 282}
+  '11': {channel: 7,  condition: eq, value: 1722}
+  '12': {channel: 4,  condition: eq, value: 1722}
+
+teleop:
+  walk:
+    type: topic
+    message_type: geometry_msgs/Twist
+    topic_name: cmd_vel
+    deadman_buttons: []
+    axis_mappings:
+      # 左摇杆上下 (CH[2]) -> 前进/后退
+      - axis: 2
+        target: linear.x
+        scale: 4.0
+
+      # 左摇杆左右 (CH[3]) -> 左右平移
+      - axis: 3
+        target: linear.y
+        scale: 0.0
+
+      # 右摇杆左右 (CH[0]) -> 旋转
+      - axis: 0
+        target: angular.z
+        scale: -1.0
+
+  start_control:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: start_control
+    deadman_buttons: [9]
+    message_value:
+      - target: data
+        value: 1.0
+
+  shut_down:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: shut_down
+    deadman_buttons: [11]
+    message_value:
+      - target: data
+        value: 1.0
+
+  lie2stand:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: lie2stand
+    deadman_buttons: [10]
+    message_value:
+      - target: data
+        value: 1.0
+
+  stand2lie:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: stand2lie
+    deadman_buttons: [12]
+    message_value:
+      - target: data
+        value: 1.0
+
+  walk_mode:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: walk_mode
+    deadman_buttons: [8]
+    message_value:
+      - target: data
+        value: 1.0
+
+  walk2stand:
+    type: topic
+    message_type: std_msgs/Float32
+    topic_name: walk2stand
+    deadman_buttons: [5]
+    message_value:
+      - target: data
+        value: 1.0
+
+  # vel_value1:
+  #   type: topic
+  #   message_type: std_msgs/Float32
+  #   topic_name: vel_value1
+  #   deadman_buttons: [6]
+  #   message_value:
+  #     - target: data
+  #       value: 0.5
+
+  # vel_value2:
+  #   type: topic
+  #   message_type: std_msgs/Float32
+  #   topic_name: vel_value2
+  #   deadman_buttons: [7]
+  #   message_value:
+  #     - target: data
+  #       value: -0.5
+
+  # pnc2walk:
+  #   type: topic
+  #   message_type: std_msgs/Bool
+  #   topic_name: pnc_enabled
+  #   deadman_buttons: [0]
+  #   message_value:
+  #     - target: data
+  #       value: false
+
+  # walk2pnc:
+  #   type: topic
+  #   message_type: std_msgs/Bool
+  #   topic_name: pnc_enabled
+  #   deadman_buttons: [2]
+  #   message_value:
+  #     - target: data
+  #       value: true

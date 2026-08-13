@@ -1,0 +1,5 @@
+*.onnx
+!.gitignore
+!policyWalk_e2_15w.onnx
+!policyDown_e2_10w.onnx
+!policyUp_e2_10w.onnx

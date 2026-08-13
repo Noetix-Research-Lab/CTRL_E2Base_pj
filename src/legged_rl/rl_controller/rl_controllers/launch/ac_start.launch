@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="robot_type" default="e2" doc="Robot type: [e2]"/>
+  <arg name="robot_model" default="e2_23dof" doc="Robot model: [e2_23dof]"/>
+  <arg name="rviz" default="false"/>
+  <arg name="urdfFile" default="$(find legged_e2_description)/urdf/e2_23dof.urdf"/>
+  <arg name="description_name" default="legged_robot_description"/>
+  <arg name="record_data" default="false"/>
+  <arg name="policy_file" default="$(find rl_controllers)/policy/e2/policyWalk_23dof.onnx"/>
+  <arg name="policy_file_dance" default="$(find rl_controllers)/policy/e2/policyDance_23dof.onnx"/>
+  <arg name="motion_file" default="$(find rl_controllers)/motion_files/e2/yinggewu_23dof.json"/>
+  <arg name="policy_file_down" default="$(find rl_controllers)/policy/e2/policyDown_e2_10w.onnx"/>
+  <arg name="policy_file_up" default="$(find rl_controllers)/policy/e2/policyUp_e2_10w.onnx"/>
+  <arg name="motion_file_down" default="$(find rl_controllers)/motion_files/e2/e2_down.json"/>
+  <arg name="motion_file_up" default="$(find rl_controllers)/motion_files/e2/e2_up.json"/>
+  <arg name="teleop_type" default="joy" doc="Teleop type: [sbus, joy]"/>
+  <arg name="sbus_config_file" default="$(find rl_controllers)/config/sbus_wfly.yaml"/>
+
+  <param name="robot_description" textfile="$(arg urdfFile)"/>
+  <param name="/robot_model" value="$(arg robot_model)"/>
+  <include file="$(find legged_gazebo)/launch/e2_empty_world.launch">
+    <arg name="robot_model" value="$(arg robot_model)"/>
+    <arg name="urdfFile" value="$(arg urdfFile)"/>
+  </include>
+
+  <group if="$(arg rviz)">
+    <param name="$(arg description_name)" textfile="$(arg urdfFile)"/>
+    <node pkg="rviz" type="rviz" name="rviz"
+          args="-d $(find rl_controllers)/rviz/legged_robot.rviz" output="screen"/>
+  </group>
+  <group if="$(arg record_data)">
+    <include file="$(find rl_controllers)/launch/record_data.launch"/>
+  </group>
+
+  <include file="$(find rl_controllers)/launch/load_ac_controller.launch">
+    <arg name="robot_type" value="$(arg robot_type)"/>
+    <arg name="robot_model" value="$(arg robot_model)"/>
+    <arg name="policy_file" value="$(arg policy_file)"/>
+    <arg name="policy_file_dance" value="$(arg policy_file_dance)"/>
+    <arg name="motion_file" value="$(arg motion_file)"/>
+    <arg name="policy_file_down" value="$(arg policy_file_down)"/>
+    <arg name="policy_file_up" value="$(arg policy_file_up)"/>
+    <arg name="motion_file_down" value="$(arg motion_file_down)"/>
+    <arg name="motion_file_up" value="$(arg motion_file_up)"/>
+    <arg name="teleop_type" value="$(arg teleop_type)"/>
+    <arg name="sbus_config_file" value="$(arg sbus_config_file)"/>
+  </include>
+</launch>

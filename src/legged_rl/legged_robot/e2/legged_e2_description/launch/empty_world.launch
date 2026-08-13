@@ -1,0 +1,16 @@
+<launch>
+    <arg name="robot_model" default="e2_23dof" doc="Robot model: [e2_23dof]"/>
+    <arg name="urdfFile" default="$(find legged_e2_description)/urdf/e2_23dof.urdf"/>
+    <param name="legged_robot_description" textfile="$(arg urdfFile)"/>
+    <param name="legged_robot_description_sim" textfile="$(arg urdfFile)"/>
+
+    <rosparam file="$(find legged_gazebo)/config/default.yaml" command="load"/>
+    <include file="$(find legged_gazebo)/launch/empty_world.launch">
+        <arg name="world_name" value="$(find legged_gazebo)/worlds/empty_world.world"/>
+    </include>
+
+    <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model" clear_params="true" 
+        args="-z 0.82 -param legged_robot_description_sim -urdf -model e2" output="screen"/>
+
+
+</launch>

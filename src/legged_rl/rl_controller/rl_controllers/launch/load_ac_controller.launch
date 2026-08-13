@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="robot_type" default="e2" doc="Robot type: [e2]"/>
+  <arg name="robot_model" default="e2_23dof" doc="Robot model: [e2_23dof]"/>
+  <arg name="ac_config_file" default="$(find rl_controllers)/config/e2_23dof_ac.yaml"/>
+  <arg name="policy_file" default="$(find rl_controllers)/policy/e2/policyWalk_23dof.onnx"/>
+  <arg name="policy_file_dance" default="$(find rl_controllers)/policy/e2/policyDance_23dof.onnx"/>
+  <arg name="motion_file" default="$(find rl_controllers)/motion_files/e2/yinggewu_23dof.json"/>
+  <arg name="policy_file_down" default="$(find rl_controllers)/policy/e2/policyDown_e2_10w.onnx"/>
+  <arg name="policy_file_up" default="$(find rl_controllers)/policy/e2/policyUp_e2_10w.onnx"/>
+  <arg name="motion_file_down" default="$(find rl_controllers)/motion_files/e2/e2_down.json"/>
+  <arg name="motion_file_up" default="$(find rl_controllers)/motion_files/e2/e2_up.json"/>
+  <arg name="enable_timing_metrics" default="false"/>
+  <arg name="teleop_type" default="joy" doc="Teleop type: [sbus, joy]"/>
+  <arg name="sbus_config_file" default="$(find rl_controllers)/config/sbus_wfly.yaml"/>
+
+  <include if="$(eval arg('teleop_type') == 'sbus')" file="$(find rl_controllers)/launch/sbus_teleop.launch">
+    <arg name="teleop_config" value="$(arg sbus_config_file)"/>
+  </include>
+  <include if="$(eval arg('teleop_type') == 'joy')" file="$(find rl_controllers)/launch/joy_teleop.launch"/>
+
+  <rosparam file="$(find rl_controllers)/config/e2_kd.yaml" command="load"/>
+  <param name="policyFile" value="$(arg policy_file)"/>
+  <param name="policyFileDance" value="$(arg policy_file_dance)"/>
+  <param name="motionFilePath" value="$(arg motion_file)"/>
+  <param name="policyFileDown" value="$(arg policy_file_down)"/>
+  <param name="policyFileUp" value="$(arg policy_file_up)"/>
+  <param name="motionFilePathDown" value="$(arg motion_file_down)"/>
+  <param name="motionFilePathUp" value="$(arg motion_file_up)"/>
+  <rosparam file="$(find rl_controllers)/config/controllers.yaml" command="load"/>
+  <rosparam file="$(arg ac_config_file)" command="load"/>
+  <param name="/LeggedRobotCfg/control/enable_timing_metrics" value="$(arg enable_timing_metrics)"/>
+  <node name="controller_spawner" pkg="controller_manager" type="spawner"
+        respawn="false" output="screen" args="controllers/ac_controller"/>
+</launch>

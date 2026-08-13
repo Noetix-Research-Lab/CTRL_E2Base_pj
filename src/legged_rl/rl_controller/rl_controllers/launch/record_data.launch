@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+
+<launch>
+    
+    <node pkg="rosbag" type="record" 
+            name="bag_record" 
+            args="
+            /data_analysis/real_joint_pos
+            /data_analysis/real_joint_vel
+            /data_analysis/real_torque
+            /data_analysis/rl_planned_joint_pos
+            /data_analysis/rl_planned_joint_vel
+            /data_analysis/rl_planned_torque
+            /data_analysis/rl_command_kp
+            /data_analysis/rl_command_kd
+            /data_analysis/rl_command_ff
+            /data_analysis/rl_mode_command
+            /data_analysis/rl_policy_observation
+            /data_analysis/rl_policy_observation_future
+            /data_analysis/rl_policy_observation_current
+            /data_analysis/rl_policy_action
+            /legged_e2_hw/data_analysis/motor_pos
+            /legged_e2_hw/data_analysis/motor_vel
+            /legged_e2_hw/data_analysis/motor_torque
+            /legged_e2_hw/data_analysis/motor_feedback
+            /legged_e2_hw/data_analysis/raw_feedback
+            /legged_e2_hw/data_analysis/hw_joint_command
+            /legged_e2_hw/data_analysis/control_fsm_command
+            /legged_e2_hw/data_analysis/packed_motor_command
+            -o $(find rl_controllers)/data/"/>
+</launch>

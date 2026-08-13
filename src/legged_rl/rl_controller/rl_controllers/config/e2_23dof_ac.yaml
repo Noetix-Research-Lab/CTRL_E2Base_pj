@@ -1,0 +1,86 @@
+LeggedRobotCfg:
+  robot:
+    model: e2_23dof
+    actuated_dof: 23
+    control_joint_names:
+      - l_leg_hip_pitch_joint
+      - l_leg_hip_roll_joint
+      - l_leg_hip_yaw_joint
+      - l_leg_knee_joint
+      - l_leg_ankle_pitch_joint
+      - l_leg_ankle_roll_joint
+      - r_leg_hip_pitch_joint
+      - r_leg_hip_roll_joint
+      - r_leg_hip_yaw_joint
+      - r_leg_knee_joint
+      - r_leg_ankle_pitch_joint
+      - r_leg_ankle_roll_joint
+      - waist_yaw_joint
+      - waist_roll_joint
+      - waist_pitch_joint
+      - l_arm_shoulder_pitch_joint
+      - l_arm_shoulder_roll_joint
+      - l_arm_shoulder_yaw_joint
+      - l_arm_elbow_joint
+      - r_arm_shoulder_pitch_joint
+      - r_arm_shoulder_roll_joint
+      - r_arm_shoulder_yaw_joint
+      - r_arm_elbow_joint
+    # ONNX/motion tensor order. This intentionally differs from the hardware
+    # control order above; RLControllerBase maps both lists to joint handles.
+    policy_joint_names:
+      - l_leg_hip_pitch_joint
+      - r_leg_hip_pitch_joint
+      - waist_yaw_joint
+      - l_leg_hip_roll_joint
+      - r_leg_hip_roll_joint
+      - waist_roll_joint
+      - l_leg_hip_yaw_joint
+      - r_leg_hip_yaw_joint
+      - waist_pitch_joint
+      - l_leg_knee_joint
+      - r_leg_knee_joint
+      - l_arm_shoulder_pitch_joint
+      - r_arm_shoulder_pitch_joint
+      - l_leg_ankle_pitch_joint
+      - r_leg_ankle_pitch_joint
+      - l_arm_shoulder_roll_joint
+      - r_arm_shoulder_roll_joint
+      - l_leg_ankle_roll_joint
+      - r_leg_ankle_roll_joint
+      - l_arm_shoulder_yaw_joint
+      - r_arm_shoulder_yaw_joint
+      - l_arm_elbow_joint
+      - r_arm_elbow_joint
+
+  control:
+    walk_policy_frequency: 50.0
+    dance_policy_frequency: 50.0
+    dance_motion_frequency: 50.0
+    # UP first applies policy gains at the measured pose, then moves to motion frame 0.
+    up_transition_duration: 2.0
+    # Hold motion frame 0 while smoothly handing command authority to the UP policy.
+    up_policy_blend_duration: 1.0
+    # Fade DOWN's final PD/FF command into kp=0, kd=0.1 low-damping hold.
+    down_torque_fade_duration: 1.0
+    async_inference: true
+    require_realtime: false
+    enable_timing_metrics: false
+    action_timeout_ms: 100
+    cmd_vel_timeout: 0.2
+    inference_cpu_affinity: 6
+    inference_thread_priority: 20
+    warmup_runs: 20
+
+  normalization:
+    clip_scales:
+      clip_observations: 18.0
+      clip_actions: 18.0
+
+  size:
+    actions_size: 23
+    actions_size_dance: 23
+    observations_size: 78
+    observations_dance_size: 124
+    stack_size: 5
+    stack_size_dance: 5

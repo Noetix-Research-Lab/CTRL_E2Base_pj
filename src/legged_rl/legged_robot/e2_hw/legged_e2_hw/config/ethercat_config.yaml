@@ -1,0 +1,69 @@
+net_card: enp2s0
+ctr_freq: 1000
+robot_type: 1
+node_motor_num: [4, 4, 6, 6, 3]
+
+# E2: 48V: 电机型号: index: 0, 1, 2, 3: 5025, 7216, 7225, 9016
+# Motor limit table indexed by *_motor_type:
+# type[0]: arm_l1-4_joint, arm_r1-4_joint
+# type[1]: leg_l1-2_joint, leg_r1-2_joint
+# type[2]: leg_l3-4_joint, leg_r3-4_joint
+# type[3]: leg_l5-6_joint, leg_r5-6_joint
+motor_max_torque_rec: [50, 140, 200, 240]
+motor_min_torque_rec: [-50, -140, -200, -240]
+
+motor_max_torque_send: [50, 140, 200, 240]
+motor_min_torque_send: [-50, -140, -200, -240]
+
+motor_max_current: [40, 100, 100, 160]
+motor_min_current: [-40, -100, -100, -160]
+
+motor_max_velocity: [30, 30, 30, 30]
+motor_min_velocity: [-30, -30, -30, -30]
+
+# Motor type order:
+# right_arm: arm_r1_joint, arm_r2_joint, arm_r3_joint, arm_r4_joint
+# left_arm:  arm_l1_joint, arm_l2_joint, arm_l3_joint, arm_l4_joint
+# right_leg: leg_r1_joint, leg_r2_joint, leg_r3_joint, leg_r4_joint, leg_r5_joint, leg_r6_joint
+# left_leg:  leg_l1_joint, leg_l2_joint, leg_l3_joint, leg_l4_joint, leg_l5_joint, leg_l6_joint
+# waist:     waist_1_joint, waist_2_joint, waist_3_joint
+right_arm_motor_type: [1, 1, 0, 0]
+left_arm_motor_type: [1, 1, 0, 0]
+right_leg_motor_type: [1, 1, 3, 2, 0, 0]
+left_leg_motor_type: [1, 1, 3, 2, 0, 0]
+waist_motor_type: [1, 0, 0]
+
+# Motor direction order is the same as the motor type order above.
+# These are the final motor-to-joint directions used by feedback unpacking and command packing.
+right_leg_motor_dir: [1, 1, 1, 1, 1, 1]
+left_leg_motor_dir: [1, 1, 1, 1, 1, 1]
+right_arm_motor_dir: [1, 1, 1, 1]
+left_arm_motor_dir: [1, 1, 1, 1]
+waist_motor_dir: [1, 1, 1]
+
+# bias_motor order follows the 23-DoF hardware joint_data_ index:
+# 0-3 right arm, 4-7 left arm, 8-13 left leg, 14-19 right leg, 20-22 waist.
+bias_motor:
+  - 0  # [0] arm_r1_joint
+  - 0  # [1] arm_r2_joint
+  - 0  # [2] arm_r3_joint
+  - 0  # [3] arm_r4_joint
+  - 0  # [4] arm_l1_joint
+  - 0  # [5] arm_l2_joint
+  - 0  # [6] arm_l3_joint
+  - 0  # [7] arm_l4_joint
+  - 0  # [8] leg_l1_joint
+  - 0  # [9] leg_l2_joint
+  - 0  # [10] leg_l3_joint
+  - 0  # [11] leg_l4_joint
+  - 0  # [12] leg_l5_joint
+  - 0  # [13] leg_l6_joint
+  - 0  # [14] leg_r1_joint
+  - 0  # [15] leg_r2_joint
+  - 0  # [16] leg_r3_joint
+  - 0  # [17] leg_r4_joint
+  - 0  # [18] leg_r5_joint
+  - 0  # [19] leg_r6_joint
+  - 0  # [20] waist_1_joint
+  - 0  # [21] waist_2_joint
+  - 0  # [22] waist_3_joint

@@ -676,14 +676,16 @@ namespace legged
       linearAccel(i) = imuSensorHandles_.getLinearAcceleration()[i];
     }
     propri_.baseAngVel  = angularVel;
+    propri_.linearAcceleration = linearAccel;
     propri_.robot_quat_ = quat;
 
     policyPropri_.baseAngVel  = angularVel;
+    policyPropri_.linearAcceleration = linearAccel;
     policyPropri_.robot_quat_ = quat;
 
     vector3_t gravityVector(0, 0, -1);
     vector3_t zyx = quatToZyx(quat);
-    matrix3_t inverseRot = getRotationMatrixFromZyxEulerAngles(zyx).inverse();
+    const matrix3_t inverseRot = getRotationMatrixFromZyxEulerAngles(zyx).transpose();
     propri_.baseEulerXyz = quatToXyz(quat);
     propri_.projectedGravity = inverseRot * gravityVector;
     policyPropri_.baseEulerXyz = propri_.baseEulerXyz;
@@ -707,8 +709,8 @@ namespace legged
 
     for (size_t i = 0; i < sample.dof; ++i) {
       auto& handle = hybridJointHandles_[i];
-      sample.jointPos[i] = handle.getPosition();
-      sample.jointVel[i] = handle.getVelocity();
+      sample.jointPos[i] = propri_.jointPos[static_cast<Eigen::Index>(i)];
+      sample.jointVel[i] = propri_.jointVel[static_cast<Eigen::Index>(i)];
       sample.jointTorque[i] = handle.getEffort();
       sample.positionDesired[i] = handle.getPositionDesired();
       sample.velocityDesired[i] = handle.getVelocityDesired();
@@ -717,11 +719,11 @@ namespace legged
       sample.feedforward[i] = handle.getFeedforward();
     }
     for (size_t i = 0; i < 4; ++i) {
-      sample.orientation[i] = imuSensorHandles_.getOrientation()[i];
+      sample.orientation[i] = propri_.robot_quat_.coeffs()[static_cast<Eigen::Index>(i)];
     }
     for (size_t i = 0; i < 3; ++i) {
-      sample.angularVelocity[i] = imuSensorHandles_.getAngularVelocity()[i];
-      sample.linearAcceleration[i] = imuSensorHandles_.getLinearAcceleration()[i];
+      sample.angularVelocity[i] = propri_.baseAngVel[static_cast<Eigen::Index>(i)];
+      sample.linearAcceleration[i] = propri_.linearAcceleration[static_cast<Eigen::Index>(i)];
       sample.eulerXyz[i] = propri_.baseEulerXyz[i];
     }
     sample.modeCommand[0] = static_cast<double>(mode_);

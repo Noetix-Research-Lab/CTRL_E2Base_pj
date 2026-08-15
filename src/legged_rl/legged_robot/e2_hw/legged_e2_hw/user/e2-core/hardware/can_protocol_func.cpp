@@ -111,10 +111,12 @@ namespace {
 
 constexpr std::size_t kMotorErrorLogCapacity = 1024;
 constexpr std::size_t kMotorErrorLogBatchSize = 64;
+constexpr std::size_t kMotorTemperatureSnapshotCapacity = 8;
 constexpr auto kMotorErrorPollPeriod = std::chrono::milliseconds(10);
 constexpr auto kMotorErrorFlushPeriod = std::chrono::seconds(1);
 constexpr auto kMotorFaultSummaryPeriod = std::chrono::seconds(1);
 constexpr uint32_t kMotorFaultTimeCheckStride = 32U;
+constexpr uint64_t kNanosecondsPerSecond = 1000000000ULL;
 constexpr const char* kMotorErrorLogHeader =
     "ros_time,event,sample_count,node_no,motor_no,joint_no,error_code,error_name,"
     "motor_temp_c,mos_temp_c,current_a";
@@ -135,6 +137,22 @@ struct MotorErrorLogRecord {
     uint8_t mos_temp;
     float current;
 };
+
+struct MotorTemperatureSnapshot {
+    uint32_t stamp_sec;
+    uint32_t stamp_nsec;
+    std::array<JointTempRecord, MAX_JOINTS> joints;
+};
+
+uint64_t ToNanoseconds(uint32_t stamp_sec, uint32_t stamp_nsec) noexcept
+{
+    return static_cast<uint64_t>(stamp_sec) * kNanosecondsPerSecond + stamp_nsec;
+}
+
+bool PeriodElapsed(uint64_t now, uint64_t last, bool initialized) noexcept
+{
+    return !initialized || now < last || now - last >= kNanosecondsPerSecond;
+}
 
 bool EnsureDirectoryExists(const std::string& directory)
 {
@@ -243,6 +261,27 @@ void PrintMotorErrorToTerminal(const MotorErrorLogRecord& rec)
               << ", 样本数=" << rec.sample_count << '\n';
 }
 
+void PrintMotorTemperatureSnapshot(const MotorTemperatureSnapshot& snapshot)
+{
+    std::cout << "motor temperature snapshot " << snapshot.stamp_sec << '.'
+              << std::setw(9) << std::setfill('0') << snapshot.stamp_nsec
+              << std::setfill(' ') << '\n';
+    for (int i = 0; i < MAX_JOINTS; ++i) {
+        const JointTempRecord& rec = snapshot.joints[static_cast<std::size_t>(i)];
+        std::cout << (rec.valid ? "aa节点=" : "bb节点=")
+                  << std::setw(WIDTH_NODE) << std::right << i;
+        if (rec.valid) {
+            std::cout << PRINT_FIELD("当前电机温度", static_cast<unsigned>(rec.curr_motor_temp), WIDTH_TEMP) << "°C";
+        }
+        std::cout << PRINT_FIELD("最大电机温度", static_cast<unsigned>(rec.max_motor_temp), WIDTH_TEMP) << "°C";
+        if (rec.valid) {
+            std::cout << PRINT_FIELD("当前MOS温度", static_cast<unsigned>(rec.curr_mos_temp), WIDTH_TEMP) << "°C";
+        }
+        std::cout << PRINT_FIELD("最大MOS温度", static_cast<unsigned>(rec.max_mos_temp), WIDTH_TEMP) << "°C"
+                  << ", 电流(INK)/扭矩(DM)=" << rec.curr_current << '\n';
+    }
+}
+
 class MotorErrorAsyncLogger {
 public:
     MotorErrorAsyncLogger() = default;
@@ -261,8 +300,7 @@ public:
 
         log_path_ = GetMotorErrorLogPath(configured_path);
         if (log_path_.empty()) {
-            std::cerr << "[motor_error_logger] log file disabled; async logger not started\n";
-            return;
+            std::cerr << "[motor_error_logger] log file disabled; terminal worker remains active\n";
         }
 
         stop_ = false;
@@ -299,6 +337,14 @@ public:
         }
     }
 
+    void EnqueueTemperatureSnapshot(const MotorTemperatureSnapshot& snapshot) noexcept
+    {
+        if (!started_.load(std::memory_order_acquire) ||
+            !temperature_snapshots_.push(snapshot)) {
+            dropped_temperature_snapshot_count_.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
+
     bool IsStarted() const
     {
         return started_.load(std::memory_order_acquire);
@@ -307,7 +353,7 @@ public:
 private:
     void Run()
     {
-        if (FileIsNonEmpty(log_path_) && !HasMotorErrorLogHeader(log_path_)) {
+        if (!log_path_.empty() && FileIsNonEmpty(log_path_) && !HasMotorErrorLogHeader(log_path_)) {
             const std::string replacement_path = MakeHeaderedLogPath(log_path_);
             std::cerr << "[motor_error_logger] existing log has no recognized header: "
                       << log_path_ << "; preserving it and writing new records to "
@@ -315,8 +361,11 @@ private:
             log_path_ = replacement_path;
         }
 
-        std::ofstream log_file(log_path_, std::ios::out | std::ios::app);
-        if (!log_file.is_open()) {
+        std::ofstream log_file;
+        if (!log_path_.empty()) {
+            log_file.open(log_path_, std::ios::out | std::ios::app);
+        }
+        if (!log_path_.empty() && !log_file.is_open()) {
             std::cerr << "[motor_error_logger] failed to open " << log_path_
                       << ", motor errors will only be printed to terminal\n";
         }
@@ -337,6 +386,13 @@ private:
             MotorErrorLogRecord record{};
             while (batch_size < batch.size() && records_.pop(record)) {
                 batch[batch_size++] = record;
+            }
+
+            MotorTemperatureSnapshot snapshot{};
+            bool printed_temperature_snapshot = false;
+            while (temperature_snapshots_.pop(snapshot)) {
+                PrintMotorTemperatureSnapshot(snapshot);
+                printed_temperature_snapshot = true;
             }
 
             const uint64_t dropped = dropped_count_.exchange(0, std::memory_order_relaxed);
@@ -373,13 +429,19 @@ private:
                     PrintMotorErrorToTerminal(rec);
                 }
             }
+            const uint64_t dropped_snapshots =
+                dropped_temperature_snapshot_count_.exchange(0, std::memory_order_relaxed);
+            if (dropped_snapshots > 0) {
+                std::cout << "[motor_error_logger] dropped " << dropped_snapshots
+                          << " temperature snapshots because the async queue was full\n";
+            }
 
             const auto now = std::chrono::steady_clock::now();
             if (log_file.is_open() && now - last_flush >= kMotorErrorFlushPeriod) {
                 log_file.flush();
                 last_flush = now;
             }
-            if (batch_size == 0) {
+            if (batch_size == 0 && !printed_temperature_snapshot) {
                 std::this_thread::sleep_for(kMotorErrorPollPeriod);
             }
         }
@@ -405,6 +467,10 @@ private:
                 PrintMotorErrorToTerminal(record);
             }
         }
+        MotorTemperatureSnapshot snapshot{};
+        while (temperature_snapshots_.pop(snapshot)) {
+            PrintMotorTemperatureSnapshot(snapshot);
+        }
         if (log_file.is_open()) {
             log_file.flush();
         }
@@ -412,10 +478,13 @@ private:
 
     std::string log_path_;
     legged::SpscRingBuffer<MotorErrorLogRecord, kMotorErrorLogCapacity> records_;
+    legged::SpscRingBuffer<MotorTemperatureSnapshot, kMotorTemperatureSnapshotCapacity>
+        temperature_snapshots_;
     std::atomic<bool> stop_{false};
     std::atomic<bool> started_{false};
     std::mutex start_mutex_;
     std::atomic<uint64_t> dropped_count_{0};
+    std::atomic<uint64_t> dropped_temperature_snapshot_count_{0};
     std::thread worker_;
 };
 
@@ -424,6 +493,11 @@ std::atomic<bool> g_log_motor_error{true};
 std::atomic<bool> g_enable_check_and_print{true};
 std::atomic<bool> g_log_motor_non_error{false};
 std::atomic<bool> g_enable_thermal_protection_limit_release{true};
+std::array<JointTempRecord, MAX_JOINTS> g_joint_temps{};
+std::array<uint64_t, MAX_JOINTS> g_last_motor_non_error_log_ns{};
+std::array<bool, MAX_JOINTS> g_motor_non_error_log_initialized{};
+uint64_t g_last_temperature_snapshot_ns{0U};
+bool g_temperature_snapshot_initialized{false};
 
 bool ParseBoolEnv(const char* value, bool default_value)
 {
@@ -585,8 +659,6 @@ bool UpdateMotorFaultLog(uint32_t stamp_sec, uint32_t stamp_nsec,
 
 }  // namespace
 
-static std::array<std::chrono::steady_clock::time_point, MAX_JOINTS> g_last_motor_non_error_log_times{};
-
 static void RecordJointTemp(int joint_no, uint8_t motor_temp, uint8_t mos_temp, float current)
 {
     if (joint_no < 0 || joint_no >= MAX_JOINTS) {
@@ -612,73 +684,50 @@ static void RecordJointTemp(int joint_no, uint8_t motor_temp, uint8_t mos_temp, 
     }
 }
 
-static bool ShouldLogMotorNonErrorNow(int joint_no)
+static bool ShouldLogMotorNonErrorNow(int joint_no, uint32_t stamp_sec,
+                                      uint32_t stamp_nsec) noexcept
 {
     if (!ShouldLogMotorNonError() || joint_no < 0 || joint_no >= MAX_JOINTS) {
         return false;
     }
 
-    auto now = std::chrono::steady_clock::now();
-    auto& last_log_time = g_last_motor_non_error_log_times[joint_no];
-    const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - last_log_time).count();
-
-    if (last_log_time.time_since_epoch().count() != 0 && elapsed_ms < PRINT_TIME_1000MS) {
+    const uint64_t now = ToNanoseconds(stamp_sec, stamp_nsec);
+    const std::size_t joint_index = static_cast<std::size_t>(joint_no);
+    uint64_t& last_log_time = g_last_motor_non_error_log_ns[joint_index];
+    if (!PeriodElapsed(now, last_log_time,
+                       g_motor_non_error_log_initialized[joint_index])) {
         return false;
     }
 
     last_log_time = now;
+    g_motor_non_error_log_initialized[joint_index] = true;
     return true;
 }
 
-static void PrintAllTemps()
-{
-    auto now = std::chrono::steady_clock::now();
-    auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-        now.time_since_epoch()).count();
-    
-    for (int i = 0; i < MAX_JOINTS; i++) {
-        JointTempRecord* rec = &g_joint_temps[i];
-        if (rec->valid) {
-            std::cout << "aa节点=" << std::setw(WIDTH_NODE) << std::right << i
-                      << PRINT_FIELD("当前电机温度", static_cast<unsigned>(rec->curr_motor_temp), WIDTH_TEMP) << "°C"
-                      << PRINT_FIELD("最大电机温度", static_cast<unsigned>(rec->max_motor_temp), WIDTH_TEMP) << "°C"
-                      << PRINT_FIELD("当前MOS温度", static_cast<unsigned>(rec->curr_mos_temp), WIDTH_TEMP) << "°C"
-                      << PRINT_FIELD("最大MOS温度", static_cast<unsigned>(rec->max_mos_temp), WIDTH_TEMP) << "°C"
-                      << ", 电流(INK)/扭矩(DM)=" << rec->curr_current << std::endl;
-        } else {
-            std::cout << "bb节点=" << std::setw(WIDTH_NODE) << std::right << i
-                      << PRINT_FIELD("最大电机温度", static_cast<unsigned>(rec->max_motor_temp), WIDTH_TEMP) << "°C"
-                      << PRINT_FIELD("最大MOS温度", static_cast<unsigned>(rec->max_mos_temp), WIDTH_TEMP) << "°C"
-                      << ", 电流(INK)/扭矩(DM)=" << rec->curr_current << std::endl;
-        }
-    }
-}
-
-static void CheckAndPrint()
+void PublishMotorTemperatureSnapshotIfDue(uint32_t stamp_sec, uint32_t stamp_nsec) noexcept
 {
     if (!ShouldCheckAndPrint()) {
         return;
     }
+    const uint64_t now = ToNanoseconds(stamp_sec, stamp_nsec);
+    if (!g_temperature_snapshot_initialized) {
+        g_last_temperature_snapshot_ns = now;
+        g_temperature_snapshot_initialized = true;
+        return;
+    }
+    if (!PeriodElapsed(now, g_last_temperature_snapshot_ns,
+                       g_temperature_snapshot_initialized)) {
+        return;
+    }
 
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-        now - g_last_print_time).count();
-    
-    if (elapsed_ms >= 1000) {
-        std::lock_guard<std::mutex> lock(g_print_mutex);
-        
-        elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - g_last_print_time).count();
-        if (elapsed_ms >= PRINT_TIME_1000MS) {
-            PrintAllTemps();
-            g_last_print_time = now;
-            
-            // 清空本周期标记
-            for (int i = 0; i < MAX_JOINTS; i++) {
-                g_joint_temps[i].valid = false;
-            }
-        }
+    MotorTemperatureSnapshot snapshot{};
+    snapshot.stamp_sec = stamp_sec;
+    snapshot.stamp_nsec = stamp_nsec;
+    snapshot.joints = g_joint_temps;
+    g_motor_error_logger.EnqueueTemperatureSnapshot(snapshot);
+    g_last_temperature_snapshot_ns = now;
+    for (JointTempRecord& record : g_joint_temps) {
+        record.valid = false;
     }
 }
 
@@ -749,7 +798,8 @@ void unpack_pvt_data_ex(uint8_t *buffer, const std::shared_ptr<ControlFSMData>& 
                     static_cast<int>(error_code), GetErrorString(error_code), is_fault,
                     current_motor_temp, current_mos_temp, torque_int);
                 if (!is_fault) { // 否则（没有错误码）检查是否到达打印时间
-                    if (!recovery_logged && ShouldLogMotorNonErrorNow(joint_no)) {
+                    if (!recovery_logged &&
+                        ShouldLogMotorNonErrorNow(joint_no, stamp_sec, stamp_nsec)) {
                         const char* status_name =
                             (error_code == DmMotorError::MOTOR_DISABLED ||
                              error_code == DmMotorError::MOTOR_ENABLED)
@@ -760,7 +810,6 @@ void unpack_pvt_data_ex(uint8_t *buffer, const std::shared_ptr<ControlFSMData>& 
                                              current_motor_temp, current_mos_temp, torque_int,
                                              false, false, "STATUS", 1U);
                     }
-                    CheckAndPrint();
                 }
             }
 
@@ -814,7 +863,8 @@ void unpack_pvt_data_ex(uint8_t *buffer, const std::shared_ptr<ControlFSMData>& 
                     static_cast<int>(error_code), GetErrorString(error_code), is_fault,
                     current_motor_temp, current_mos_temp, current);
                 if (!is_fault) { // 否则（没有错误码）检查是否到达打印时间
-                    if (!recovery_logged && ShouldLogMotorNonErrorNow(joint_no)) {
+                    if (!recovery_logged &&
+                        ShouldLogMotorNonErrorNow(joint_no, stamp_sec, stamp_nsec)) {
                         const char* status_name =
                             (error_code == MotorError::NO_ERROR ||
                              error_code == MotorError::RESERVED_5)
@@ -825,7 +875,6 @@ void unpack_pvt_data_ex(uint8_t *buffer, const std::shared_ptr<ControlFSMData>& 
                                              current_motor_temp, current_mos_temp, current,
                                              false, false, "STATUS", 1U);
                     }
-                    CheckAndPrint();
                 }
             }
 

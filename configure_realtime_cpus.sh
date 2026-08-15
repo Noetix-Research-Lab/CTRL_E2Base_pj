@@ -362,10 +362,11 @@ if ((UPDATE_APP_CONFIG)); then
   HW_CONFIG="${REPO_ROOT}/src/legged_rl/legged_robot/e2_hw/legged_e2_hw/config/e2.yaml"
   [[ -f "$HW_CONFIG" ]] || die "hardware config not found: $HW_CONFIG"
   sed -E -i "s/^([[:space:]]*cpu_affinity:[[:space:]]*)-?[0-9]+/\\1${CONTROL_CPU}/" "$HW_CONFIG"
+  sed -E -i "s/^([[:space:]]*inference_cpu_affinity:[[:space:]]*)-?[0-9]+/\\1${INFER_CPU}/" "$HW_CONFIG"
   sed -E -i "s/^([[:space:]]*require_realtime:[[:space:]]*)(true|false)/\\1true/" "$HW_CONFIG"
 
   shopt -s nullglob
-  AC_CONFIGS=("${REPO_ROOT}"/src/legged_rl/rl_controller/rl_controllers/config/e1*_ac.yaml)
+  AC_CONFIGS=("${REPO_ROOT}"/src/legged_rl/rl_controller/rl_controllers/config/e*_ac.yaml)
   ((${#AC_CONFIGS[@]} > 0)) || die "no AC controller configs found"
   for config in "${AC_CONFIGS[@]}"; do
     sed -E -i "s/^([[:space:]]*inference_cpu_affinity:[[:space:]]*)-?[0-9]+/\\1${INFER_CPU}/" "$config"

@@ -9,6 +9,9 @@ legged_e2_hw:
   # Set to an isolated core (kernel cmdline: isolcpus=N nohz_full=N rcu_nocbs=N)
   # for lowest jitter; avoid core 0. Requires CAP_SYS_NICE.
   cpu_affinity: 4
+  # Reserve this core for ONNX inference; ordinary ROS and publisher threads
+  # are restricted away from both realtime cores before they are created.
+  inference_cpu_affinity: 6
   # SOEM process-data receive timeout. Must leave budget inside the 2 ms loop.
   ethercat_receive_timeout_us: 500
   # Publish allocation-free RT loop samples through a non-RT batching callback.
@@ -21,10 +24,10 @@ legged_e2_hw:
   # Log fault transitions/recovery and one persistent-fault summary per second.
   # The RT thread only pushes fixed-size records to a lock-free SPSC queue.
   enable_motor_error_log: true
-  # Enable once-per-second CheckAndPrint terminal temperature output.
+  # RT-safe: copy one fixed-size snapshot per second to the async terminal worker.
   enable_check_and_print: false
-  # Enable one normal temperature/status record per joint per second.
-  # Keep disabled in real-time deployment; require_realtime forbids enabling it.
+  # RT-safe: enqueue at most one normal status record per joint per second.
+  # Throttling reuses the control-cycle timestamp and performs no clock syscall.
   enable_motor_non_error_log: false
   # Enable raw INKEX motor/MOS temperature reporting without thermal protection conversion.
   enable_thermal_protection_limit_release: true

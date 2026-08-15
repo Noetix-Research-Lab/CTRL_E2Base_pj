@@ -54,7 +54,9 @@ void expectMotionPolicyExecutes(const char* path, const char* environmentName)
   output.actions = actions.data();
   output.actionCapacity = actions.size();
   Ort::RunOptions runOptions;
-  EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  for (int iteration = 0; iteration < 10; ++iteration) {
+    EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  }
   EXPECT_EQ(output.actionSize, 23U);
 }
 }  // namespace
@@ -73,7 +75,9 @@ TEST(PolicyExecutionTest, WalkOwnsAndExecutesItsModel)
   output.actions = actions.data();
   output.actionCapacity = actions.size();
   Ort::RunOptions runOptions;
-  EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  for (int iteration = 0; iteration < 10; ++iteration) {
+    EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  }
   EXPECT_EQ(output.actionSize, 23U);
 }
 
@@ -91,8 +95,10 @@ TEST(PolicyExecutionTest, WalkActionsRemainValidWithoutOptionalVelocityEstimate)
   output.actions = actions.data();
   output.actionCapacity = actions.size();
   Ort::RunOptions runOptions;
-  EXPECT_EQ(policy.run(input, output, runOptions),
-            PolicyRunStatus::SUCCESS_WITHOUT_ESTIMATE);
+  for (int iteration = 0; iteration < 10; ++iteration) {
+    EXPECT_EQ(policy.run(input, output, runOptions),
+              PolicyRunStatus::SUCCESS_WITHOUT_ESTIMATE);
+  }
   EXPECT_EQ(output.actionSize, 23U);
   EXPECT_FALSE(output.estimateValid);
 }
@@ -111,7 +117,9 @@ TEST(PolicyExecutionTest, DanceOwnsAndExecutesItsModel)
   output.actions = actions.data();
   output.actionCapacity = actions.size();
   Ort::RunOptions runOptions;
-  EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  for (int iteration = 0; iteration < 10; ++iteration) {
+    EXPECT_EQ(policy.run(input, output, runOptions), PolicyRunStatus::SUCCESS);
+  }
   EXPECT_EQ(output.actionSize, 23U);
 }
 

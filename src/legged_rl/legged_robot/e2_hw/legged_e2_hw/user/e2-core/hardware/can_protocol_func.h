@@ -6,10 +6,8 @@
 #define BAER_CORE_CAN_PROTOCOL_FUNC_H
 
 #include "cstdint"
-#include <chrono>
 #include <functional>
 #include <iomanip>
-#include <mutex>
 #include <string>
 #include "../FSM_States/ControlFSMData.h"
 #include "EthercatParameter.h"
@@ -45,9 +43,6 @@ enum class DmMotorError : uint8_t {
     MOTOR_OVERLOAD = 0x0E           // 过载
 };
 
-// 时间戳（最准确，不受丢帧影响）
-#define PRINT_TIME_1000MS  (1000)
-
 #define MOTOR_TEMP_LIMIT 180
 #define MOS_TEMP_LIMIT   120
 // 定义列宽常量
@@ -76,13 +71,6 @@ typedef struct {
     bool max_initialized;    // 最大值是否已初始化
 } JointTempRecord;
 
-// 所有关节的温度数据数组
-static JointTempRecord g_joint_temps[MAX_JOINTS] = {0};
-
-// 打印控制
-static std::mutex g_print_mutex;
-static auto g_last_print_time = std::chrono::steady_clock::now();
-
 // 温度数据回调函数类型 (使用整数类型)
 using TemperatureDataCallback = std::function<void(int, uint8_t, uint8_t, uint8_t, uint8_t)>;
 // joint_no, motor_temp, mos_temp, motor_temp_max, mos_temp_max
@@ -94,6 +82,7 @@ void SetMotorErrorLoggingEnabled(bool enabled);
 void SetCheckAndPrintEnabled(bool enabled);
 void SetMotorNonErrorLoggingEnabled(bool enabled);
 void SetThermalProtectionLimitReleaseEnabled(bool enabled);
+void PublishMotorTemperatureSnapshotIfDue(uint32_t stamp_sec, uint32_t stamp_nsec) noexcept;
 
 enum class MotorType {
     YOBOT = 1, DMBOT, LZBOT, INKEXBOT, UNKNOWN

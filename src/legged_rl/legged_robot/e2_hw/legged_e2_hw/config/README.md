@@ -22,8 +22,8 @@
 | `enable_ankle_log` | 是否启用踝关节解算调试 CSV。默认 `false`；实时线程只组装固定大小记录并写入 SPSC 队列，CSV 格式化和文件写入由独立非实时线程完成。队列满时丢弃调试行并累计报警，不阻塞控制循环。 |
 | `ankle_log_path` | 踝关节解算调试 CSV 路径，支持 `{timestamp}` 占位符；兼容全局参数 `/ankle_log_path` 覆盖。启用 `enable_ankle_log` 时启动阶段截断文件并写入表头，后台线程每秒刷新并在退出时排空队列。 |
 | `enable_motor_error_log` | 是否记录电机故障。默认 `true`；实时线程通过无锁 SPSC 队列提交事件，只记录首次故障、故障码变化、每秒持续故障汇总和恢复。文件写入及终端输出由后台线程完成。 |
-| `enable_check_and_print` | 是否启用 `CheckAndPrint()` 每秒一次的终端温度汇总打印。默认 `false`；该功能直接在硬件读取线程中锁互斥量并输出终端，`require_realtime=true` 时禁止开启。 |
-| `enable_motor_non_error_log` | 是否记录无故障电机的温度/状态。默认 `false`；开启后每个关节最多每秒记录一次，但实时路径仍需逐帧检查时间，因此 `require_realtime=true` 时禁止开启。 |
+| `enable_check_and_print` | 是否每秒一次打印终端温度汇总。默认 `false`；实时线程只复制固定大小快照到无锁 SPSC 队列，格式化和终端输出由非实时日志线程执行，可与 `require_realtime=true` 同时开启。 |
+| `enable_motor_non_error_log` | 是否记录无故障电机的温度/状态。默认 `false`；每个关节最多每秒向无锁 SPSC 队列提交一条固定大小记录，节流复用控制周期时间戳，不调用时钟或执行 I/O，可与 `require_realtime=true` 同时开启。 |
 | `enable_thermal_protection_limit_release` | 是否解除 INKEX 电机/MOS 温度反馈的热保护转换限制。`true` 时直接使用原始温度值；`false` 时按保护转换公式 `(raw_temp - 50) / 2` 计算。 |
 | `motor_error_log_path` | 电机错误/温度日志文件路径。相对路径基于 launch 启动时的工作目录；父目录不存在时会自动创建。后台线程批量写入并每秒刷新一次。设为空字符串、`none` 或 `off` 时禁用异步文件日志。 |
 

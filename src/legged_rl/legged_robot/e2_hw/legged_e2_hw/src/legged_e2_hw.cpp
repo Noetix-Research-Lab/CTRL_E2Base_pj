@@ -43,22 +43,37 @@ int main(int argc, char** argv)
   {
     ROS_INFO("mlockall succeeded: process memory locked for real-time execution.");
   }
-  // Keep all non-RT threads (the AsyncSpinner callback threads and this main
-  // thread) off the isolated RT core. Threads inherit the creating thread's CPU
-  // affinity mask, so setting it here before spinner.start() propagates to the
-  // spinner threads. The RT loop thread later overrides its own affinity
-  // (pthread_setaffinity_np) to land on the isolated core.
+  // Keep ordinary threads off both realtime cores. Threads inherit the creating
+  // thread's CPU mask, so applying it before spinner.start() also covers later
+  // publisher/logger workers. The control and inference workers then pin
+  // themselves to their dedicated cores.
   {
     int rtCore = -1;
+    int inferenceCore = -1;
     robot_hw_nh.param("cpu_affinity", rtCore, -1);
+    robot_hw_nh.param("inference_cpu_affinity", inferenceCore, -1);
     const long nCpus = sysconf(_SC_NPROCESSORS_ONLN);
-    if (rtCore >= 0 && nCpus > 1 && rtCore < static_cast<long>(nCpus))
+    const bool rtCoreValid = rtCore >= 0 && nCpus > 1 &&
+        rtCore < static_cast<long>(nCpus);
+    if (inferenceCore >= 0 &&
+        (inferenceCore >= static_cast<long>(nCpus) || inferenceCore == rtCore))
+    {
+      if (requireRealtime)
+      {
+        ROS_FATAL("require_realtime: inference_cpu_affinity must identify a core distinct from the control core");
+        return 1;
+      }
+      ROS_WARN("Ignoring invalid inference_cpu_affinity=%d; non-RT threads may share the inference CPU",
+               inferenceCore);
+      inferenceCore = -1;
+    }
+    if (rtCoreValid)
     {
       cpu_set_t cpuSet;
       CPU_ZERO(&cpuSet);
       for (long c = 0; c < nCpus; ++c)
       {
-        if (c != rtCore)
+        if (c != rtCore && c != inferenceCore)
         {
           CPU_SET(c, &cpuSet);
         }
@@ -75,12 +90,20 @@ int main(int argc, char** argv)
       }
       else
       {
-        ROS_INFO("Non-RT threads restricted to cores other than %d (isolated RT core).", rtCore);
+        if (inferenceCore >= 0)
+        {
+          ROS_INFO("Non-RT threads restricted away from control core %d and inference core %d.",
+                   rtCore, inferenceCore);
+        }
+        else
+        {
+          ROS_INFO("Non-RT threads restricted away from control core %d.", rtCore);
+        }
       }
     }
     else if (requireRealtime)
     {
-      ROS_FATAL("require_realtime: cpu_affinity must identify a valid control CPU on a multi-core system");
+      ROS_FATAL("require_realtime: control/inference CPU affinities must be valid, distinct cores");
       return 1;
     }
   }

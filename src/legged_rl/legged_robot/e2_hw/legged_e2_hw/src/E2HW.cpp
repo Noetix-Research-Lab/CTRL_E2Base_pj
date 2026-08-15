@@ -241,16 +241,6 @@ namespace legged
                 ethercat_receive_timeout_us);
       return false;
     }
-    if (require_realtime && enable_check_and_print)
-    {
-      ROS_ERROR("[E2HW] require_realtime forbids enable_check_and_print in the RT read path");
-      return false;
-    }
-    if (require_realtime && enable_motor_non_error_log)
-    {
-      ROS_ERROR("[E2HW] require_realtime forbids enable_motor_non_error_log because it adds per-frame timing checks");
-      return false;
-    }
     if (can_delta_threshold < 0 || can_fault_samples <= 0 || can_recovery_samples <= 0 ||
         can_enabled_mask < 0 ||
         can_enabled_mask > static_cast<int>(CanErrorDetector::kAllChannelsMask))
@@ -299,7 +289,7 @@ namespace legged
     }
     if (!enable_check_and_print)
     {
-      ROS_WARN("[E2HW] CheckAndPrint terminal temperature output DISABLED.");
+      ROS_WARN("[E2HW] asynchronous terminal temperature output DISABLED.");
     }
     if (enable_motor_non_error_log)
     {
@@ -850,7 +840,7 @@ namespace legged
     unpack_motor(node_3->medulla_data_.motor_7, 4, 0, 20, MotorType::INKEXBOT);
     unpack_motor(node_3->medulla_data_.motor_8, 4, 1, 21, MotorType::INKEXBOT);
     unpack_motor(node_3->medulla_data_.motor_9, 4, 2, 22, MotorType::INKEXBOT);
-
+    PublishMotorTemperatureSnapshotIfDue(time.sec, time.nsec);
 
     // 获取全局时间并设置到帧中
     global_time = control_fsm_data->time_; 

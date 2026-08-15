@@ -61,6 +61,7 @@ namespace legged
     vector_t jointPos;
     vector_t jointVel;
     vector3_t baseAngVel;
+    vector3_t linearAcceleration;
     vector3_t baseEulerXyz;
     vector3_t projectedGravity;
     quaternion_t robot_quat_;

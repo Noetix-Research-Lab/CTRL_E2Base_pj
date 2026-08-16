@@ -32,7 +32,7 @@ find_package(catkin REQUIRED
         message_generation
         legged_hw
         tf
-        parallel_solve
+        pjsol
         )
 
 add_message_files(
@@ -58,7 +58,7 @@ catkin_package(
         std_msgs
         message_runtime
         legged_hw
-        parallel_solve
+        pjsol
 )
 
 ###########
@@ -71,7 +71,6 @@ include_directories(
         ${catkin_INCLUDE_DIRS}
         ${Boost_INCLUDE_DIR}
         ${Eigen3_INCLUDE_DIRS} 
-        ${parallel_solve_INCLUDE_DIR}
         common
         third-party/inih
         third-party/ParamHandler
@@ -99,6 +98,7 @@ file(GLOB_RECURSE sources_user
 add_executable(legged_e2_hw
         src/legged_e2_hw.cpp
         src/E2HW.cpp
+        src/ParallelJoint.cpp
         ${sources_user}
         )
 add_dependencies(legged_e2_hw ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})

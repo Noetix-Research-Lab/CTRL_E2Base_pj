@@ -58,7 +58,9 @@
 
 #include "Timer.h"
 // #include "MotorConfig.h"
-#include "parallel_solve/include_parallel_solve.h"
+#include "PjsolConfig.h"
+#include "ParallelJoint.h"
+#include <memory>
 
 namespace legged
 {
@@ -153,6 +155,7 @@ namespace legged
     void parallel_waist_solve_cmd(E2MotorData joint_data[]);
 
   private:
+    bool setupParallelSolvers(const PjsolOptionsFromYaml& options);
     struct AnkleDebugSample
     {
       std::array<double, 52> values{};
@@ -263,8 +266,10 @@ namespace legged
     std::atomic_bool nonFiniteCommandFaultEvent_{false};
     std::atomic<int> nonFiniteCommandFaultLocation_{-1};
 
-    bool ankle_motor_ready_flag_{false};
-    bool waist_motor_ready_flag_{false};
+    ParallelJoint ankle_left;
+    ParallelJoint ankle_right;
+    ParallelJoint waist;
+
 
     // Joint command handles cached once in init() so read() does not re-query
     // them by name (vector<string> alloc + 23 map lookups) every RT cycle.

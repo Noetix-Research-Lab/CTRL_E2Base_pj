@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="2">
+    <name>pjsol</name>
+    <version>0.1.0</version>
+    <description>Prebuilt parallel mechanism solver for E2</description>
+    <maintainer email="hongfei.zh@outlook.com">Hongfei Zhu</maintainer>
+    <license>TODO</license>
+
+    <buildtool_depend>catkin</buildtool_depend>
+</package>

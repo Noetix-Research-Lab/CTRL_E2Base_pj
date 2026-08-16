@@ -320,6 +320,7 @@ namespace legged
     }
     std::string user_param_path = package_path + "/config/config.yaml";
     std::string ethercat_param_path = package_path + "/config/ethercat_config.yaml";
+    std::string pjsol_param_path = package_path + "/config/pjsol_config.yaml";
     // 通过rosparam读取EtherCAT配置选项
 
 /*     // root_nh.getParam("/ethercat_config/net_card", config.net_card);
@@ -367,6 +368,15 @@ namespace legged
     }
     for (size_t i = 0; i < ethercat_options_from_yaml.bias_motor.size(); ++i) {
         bias_motor[i] = static_cast<float>(ethercat_options_from_yaml.bias_motor[i]);
+    }
+
+    PjsolOptionsFromYaml pjsol_options_from_yaml;
+    try {
+        pjsol_options_from_yaml = drake::yaml::LoadYamlFile<PjsolOptionsFromYaml>(pjsol_param_path);
+    } catch (const std::exception& exception) {
+        ROS_ERROR("[E2HW] Failed to parse pjsol config %s: %s",
+                  pjsol_param_path.c_str(), exception.what());
+        return false;
     }
 
     std::cout<<"user_param_path:"<<user_param_path<<std::endl;
@@ -446,6 +456,12 @@ namespace legged
     setupJoints();
     setupImu();
     //setupContactSensor(robot_hw_nh);
+
+    if (!setupParallelSolvers(pjsol_options_from_yaml))
+    {
+      ROS_ERROR("[E2HW] Failed to initialize pjsol parallel solvers");
+      return false;
+    }
 
     // Cache hybrid joint handles once so the RT read() loop avoids per-cycle
     // getNames() allocation and repeated name-based handle lookups.
@@ -555,6 +571,47 @@ namespace legged
       }
     };
 
+    ros::Time last_unreachable_warn_left;
+    ros::Time last_unreachable_warn_right;
+    ros::Time last_unreachable_warn_waist;
+    ros::Time last_state_issue_warn_left;
+    ros::Time last_state_issue_warn_right;
+    ros::Time last_state_issue_warn_waist;
+    const auto warn_unreachable_command = [](ParallelJoint& joint, ros::Time& last_warn) {
+      double qr = 0.0;
+      double qp = 0.0;
+      uint64_t count = 0;
+      if (!joint.consumeUnreachableCommandEvent(&qr, &qp, &count)) {
+        return;
+      }
+      const ros::Time now = ros::Time::now();
+      if (!last_warn.isZero() && (now - last_warn).toSec() < 1.0) {
+        return;
+      }
+      last_warn = now;
+      ROS_WARN("[E2HW] %s command pose unreachable: qr=%.4f qp=%.4f count=%llu "
+               "(no clamp, PD continues)",
+               joint.name().c_str(), qr, qp,
+               static_cast<unsigned long long>(count));
+    };
+    const auto warn_state_issue = [](ParallelJoint& joint, ros::Time& last_warn) {
+      ParallelStateIssue issue = ParallelStateIssue::None;
+      uint64_t count = 0;
+      double q1 = 0.0;
+      double q2 = 0.0;
+      if (!joint.consumeStateIssueEvent(&issue, &count, &q1, &q2)) {
+        return;
+      }
+      const ros::Time now = ros::Time::now();
+      if (!last_warn.isZero() && (now - last_warn).toSec() < 1.0) {
+        return;
+      }
+      last_warn = now;
+      ROS_WARN("[E2HW] %s state %s: q1=%.4f q2=%.4f count=%llu",
+               joint.name().c_str(), ParallelStateIssueName(issue), q1, q2,
+               static_cast<unsigned long long>(count));
+    };
+
     while (motorFeedbackPublisherRunning_.load(std::memory_order_acquire)) {
       if (nonFiniteCommandFaultEvent_.exchange(false, std::memory_order_acq_rel)) {
         const int location = nonFiniteCommandFaultLocation_.load(std::memory_order_acquire);
@@ -563,6 +620,12 @@ namespace legged
                   location >= 0 ? location / 6 : -1,
                   location >= 0 ? location % 6 : -1);
       }
+      warn_unreachable_command(ankle_left, last_unreachable_warn_left);
+      warn_unreachable_command(ankle_right, last_unreachable_warn_right);
+      warn_unreachable_command(waist, last_unreachable_warn_waist);
+      warn_state_issue(ankle_left, last_state_issue_warn_left);
+      warn_state_issue(ankle_right, last_state_issue_warn_right);
+      warn_state_issue(waist, last_state_issue_warn_waist);
       const uint32_t can_events_dropped = canEventDropped_.exchange(0, std::memory_order_relaxed);
       if (can_events_dropped > 0U) {
         ROS_WARN("Dropped %u CAN state transition events", can_events_dropped);
@@ -1201,252 +1264,132 @@ namespace legged
     imu_data_.linear_acc[2] = acc_output(2);
   }
 
-  void E2HW::parallel_ankle_solve_state(E2MotorData joint_data[]) {
-    double q_1;
-    double q_2;
-    double dq_1;
-    double dq_2;
-    double tor_1;
-    double tor_2;
-
-    double jacob[4];
-
-    double q_roll;
-    double q_pitch;
-    double dq_roll;
-    double dq_pitch;
-    double tor_roll;
-    double tor_pitch;
-
-    
-    if (enable_ankle_log_)
+  bool E2HW::setupParallelSolvers(const PjsolOptionsFromYaml& options)
+  {
+    std::string error;
+    if (!ankle_left.init("left_ankle", options.left_ankle, &error))
     {
-      auto& values = pendingAnkleDebugSample_.values;
-      values[0] = joint_data[12].pos_;
-      values[1] = joint_data[13].pos_;
-      values[2] = joint_data[18].pos_;
-      values[3] = joint_data[19].pos_;
-      values[4] = joint_data[12].vel_;
-      values[5] = joint_data[13].vel_;
-      values[6] = joint_data[18].vel_;
-      values[7] = joint_data[19].vel_;
-      values[8] = joint_data[12].ff_;
-      values[9] = joint_data[13].ff_;
-      values[10] = joint_data[18].ff_;
-      values[11] = joint_data[19].ff_;
+      ROS_ERROR("[E2HW] left_ankle init failed: %s", error.c_str());
+      return false;
     }
-
-    if(fabs(joint_data[12].pos_) > 3.14 || fabs(joint_data[13].pos_) > 3.14 || fabs(joint_data[18].pos_) > 3.14 || fabs(joint_data[19].pos_) > 3.14) {
-      ankle_motor_ready_flag_ = false;
-    } else {
-      ankle_motor_ready_flag_ = true;
+    if (!ankle_right.init("right_ankle", options.right_ankle, &error))
+    {
+      ROS_ERROR("[E2HW] right_ankle init failed: %s", error.c_str());
+      return false;
     }
-
-    for(int which_leg = 0; which_leg < 2; ++which_leg){
-      q_1   = joint_data[13 + which_leg * 6].pos_ + 0.4;
-      q_2   = joint_data[12 + which_leg * 6].pos_ + 0.4;
-      dq_1  = joint_data[13 + which_leg * 6].vel_;
-      dq_2  = joint_data[12 + which_leg * 6].vel_;
-      tor_1 = joint_data[13 + which_leg * 6].tau_;
-      tor_2 = joint_data[12 + which_leg * 6].tau_;
-
-      parallel_ankle_fk(q_1, q_2, 1-which_leg, &q_roll, &q_pitch);
-      parallel_ankle_jacobian(q_roll, q_pitch, q_1, q_2, 1-which_leg, 0, jacob);
-      parallel_ankle_fk_vel(dq_1, dq_2, jacob, 1-which_leg, &dq_roll, &dq_pitch);
-      parallel_ankle_fd(tor_1, tor_2, jacob, 1-which_leg, &tor_roll, &tor_pitch);
-
-      joint_data[13 + which_leg * 6].pos_ = q_roll;
-      joint_data[12 + which_leg * 6].pos_ = q_pitch;
-      joint_data[13 + which_leg * 6].vel_ = dq_roll;
-      joint_data[12 + which_leg * 6].vel_ = dq_pitch;
-      joint_data[13 + which_leg * 6].tau_ = tor_roll;
-      joint_data[12 + which_leg * 6].tau_ = tor_pitch;
+    if (!waist.init("waist", options.waist, &error))
+    {
+      ROS_ERROR("[E2HW] waist init failed: %s", error.c_str());
+      return false;
     }
+    ROS_INFO("[E2HW] pjsol ready: left_ankle=%s right_ankle=%s waist=%s",
+             options.left_ankle.type.c_str(), options.right_ankle.type.c_str(),
+             options.waist.type.c_str());
+    return true;
+  }
 
+  void E2HW::parallel_ankle_solve_state(E2MotorData joint_data[])
+  {
+    const int left_q2_channel = ankle_left.q2Channel();
+    const int left_q1_channel = ankle_left.q1Channel();
+    const int right_q2_channel = ankle_right.q2Channel();
+    const int right_q1_channel = ankle_right.q1Channel();
 
     if (enable_ankle_log_)
     {
       auto& values = pendingAnkleDebugSample_.values;
-      values[12] = joint_data[12].pos_;
-      values[13] = joint_data[13].pos_;
-      values[14] = joint_data[18].pos_;
-      values[15] = joint_data[19].pos_;
-      values[16] = joint_data[12].vel_;
-      values[17] = joint_data[13].vel_;
-      values[18] = joint_data[18].vel_;
-      values[19] = joint_data[19].vel_;
-      values[20] = joint_data[12].ff_;
-      values[21] = joint_data[13].ff_;
-      values[22] = joint_data[18].ff_;
-      values[23] = joint_data[19].ff_;
+      values[0] = joint_data[left_q2_channel].pos_;
+      values[1] = joint_data[left_q1_channel].pos_;
+      values[2] = joint_data[right_q2_channel].pos_;
+      values[3] = joint_data[right_q1_channel].pos_;
+      values[4] = joint_data[left_q2_channel].vel_;
+      values[5] = joint_data[left_q1_channel].vel_;
+      values[6] = joint_data[right_q2_channel].vel_;
+      values[7] = joint_data[right_q1_channel].vel_;
+      values[8] = joint_data[left_q2_channel].ff_;
+      values[9] = joint_data[left_q1_channel].ff_;
+      values[10] = joint_data[right_q2_channel].ff_;
+      values[11] = joint_data[right_q1_channel].ff_;
+    }
+
+    ankle_left.updateState(joint_data);
+    ankle_right.updateState(joint_data);
+
+    if (enable_ankle_log_)
+    {
+      auto& values = pendingAnkleDebugSample_.values;
+      values[12] = joint_data[left_q2_channel].pos_;
+      values[13] = joint_data[left_q1_channel].pos_;
+      values[14] = joint_data[right_q2_channel].pos_;
+      values[15] = joint_data[right_q1_channel].pos_;
+      values[16] = joint_data[left_q2_channel].vel_;
+      values[17] = joint_data[left_q1_channel].vel_;
+      values[18] = joint_data[right_q2_channel].vel_;
+      values[19] = joint_data[right_q1_channel].vel_;
+      values[20] = joint_data[left_q2_channel].ff_;
+      values[21] = joint_data[left_q1_channel].ff_;
+      values[22] = joint_data[right_q2_channel].ff_;
+      values[23] = joint_data[right_q1_channel].ff_;
       ankleDebugSamplePending_ = true;
     }
   }
 
-  void E2HW::parallel_ankle_solve_cmd(E2MotorData joint_data[]){
-    double q_1;
-    double q_2;
-    double dq_1;
-    double dq_2;
-    double tor_1;
-    double tor_2;
+  void E2HW::parallel_ankle_solve_cmd(E2MotorData joint_data[])
+  {
+    ankle_left.applyCommand(joint_data);
+    ankle_right.applyCommand(joint_data);
 
-    double jacob[4];
-
-    double q_roll;
-    double q_pitch;
-    double dq_roll;
-    double dq_pitch;
-    double tor_roll;
-    double tor_pitch;
-
-    for(int which_leg = 0; which_leg < 2; ++which_leg){
-      q_roll    = joint_data[13 + which_leg * 6].pos_;
-      q_pitch   = joint_data[12 + which_leg * 6].pos_;
-      dq_roll   = joint_data[13 + which_leg * 6].vel_;
-      dq_pitch  = joint_data[12 + which_leg * 6].vel_;
-
-      tor_roll  = joint_data[13 + which_leg * 6].kp_ * (joint_data[13 + which_leg * 6].pos_des_ - joint_data[13 + which_leg * 6].pos_) + joint_data[13 + which_leg * 6].kd_ * (joint_data[13 + which_leg * 6].vel_des_ - joint_data[13 + which_leg * 6].vel_);
-      tor_pitch = joint_data[12 + which_leg * 6].kp_ * (joint_data[12 + which_leg * 6].pos_des_ - joint_data[12 + which_leg * 6].pos_) + joint_data[12 + which_leg * 6].kd_ * (joint_data[12 + which_leg * 6].vel_des_ - joint_data[12 + which_leg * 6].vel_);
-
-      parallel_ankle_ik(q_roll, q_pitch, 1-which_leg, 0, &q_1, &q_2);
-      parallel_ankle_jacobian(q_roll, q_pitch, q_1, q_2, 1-which_leg, 0, jacob);
-      parallel_ankle_ik_vel(q_roll, q_pitch, q_1, q_2, dq_roll, dq_pitch, 1-which_leg, 0, &dq_1, &dq_2);
-      parallel_ankle_id(tor_roll, tor_pitch, jacob, 1-which_leg, &tor_1, &tor_2);
-
-      joint_data[13 + which_leg * 6].ff_ = tor_1;
-      joint_data[12 + which_leg * 6].ff_ = tor_2;
-    }
-
-
-    if (enable_ankle_log_)
+    if (enable_ankle_log_ && ankleDebugSamplePending_)
     {
-      if (ankleDebugSamplePending_)
+      const int left_q2_channel = ankle_left.q2Channel();
+      const int left_q1_channel = ankle_left.q1Channel();
+      const int right_q2_channel = ankle_right.q2Channel();
+      const int right_q1_channel = ankle_right.q1Channel();
+      auto& values = pendingAnkleDebugSample_.values;
+      values[24] = joint_data[left_q2_channel].pos_;
+      values[25] = joint_data[left_q1_channel].pos_;
+      values[26] = joint_data[right_q2_channel].pos_;
+      values[27] = joint_data[right_q1_channel].pos_;
+      values[28] = joint_data[left_q2_channel].vel_;
+      values[29] = joint_data[left_q1_channel].vel_;
+      values[30] = joint_data[right_q2_channel].vel_;
+      values[31] = joint_data[right_q1_channel].vel_;
+      values[32] = joint_data[left_q2_channel].pos_des_;
+      values[33] = joint_data[left_q1_channel].pos_des_;
+      values[34] = joint_data[right_q2_channel].pos_des_;
+      values[35] = joint_data[right_q1_channel].pos_des_;
+      values[36] = joint_data[left_q2_channel].vel_des_;
+      values[37] = joint_data[left_q1_channel].vel_des_;
+      values[38] = joint_data[right_q2_channel].vel_des_;
+      values[39] = joint_data[right_q1_channel].vel_des_;
+      values[40] = joint_data[left_q2_channel].kp_;
+      values[41] = joint_data[left_q1_channel].kp_;
+      values[42] = joint_data[right_q2_channel].kp_;
+      values[43] = joint_data[right_q1_channel].kp_;
+      values[44] = joint_data[left_q2_channel].kd_;
+      values[45] = joint_data[left_q1_channel].kd_;
+      values[46] = joint_data[right_q2_channel].kd_;
+      values[47] = joint_data[right_q1_channel].kd_;
+      values[48] = joint_data[left_q2_channel].ff_;
+      values[49] = joint_data[left_q1_channel].ff_;
+      values[50] = joint_data[right_q2_channel].ff_;
+      values[51] = joint_data[right_q1_channel].ff_;
+      if (!ankleDebugBuffer_.push(pendingAnkleDebugSample_))
       {
-        auto& values = pendingAnkleDebugSample_.values;
-        values[24] = joint_data[12].pos_;
-        values[25] = joint_data[13].pos_;
-        values[26] = joint_data[18].pos_;
-        values[27] = joint_data[19].pos_;
-        values[28] = joint_data[12].vel_;
-        values[29] = joint_data[13].vel_;
-        values[30] = joint_data[18].vel_;
-        values[31] = joint_data[19].vel_;
-        values[32] = joint_data[12].pos_des_;
-        values[33] = joint_data[13].pos_des_;
-        values[34] = joint_data[18].pos_des_;
-        values[35] = joint_data[19].pos_des_;
-        values[36] = joint_data[12].vel_des_;
-        values[37] = joint_data[13].vel_des_;
-        values[38] = joint_data[18].vel_des_;
-        values[39] = joint_data[19].vel_des_;
-        values[40] = joint_data[12].kp_;
-        values[41] = joint_data[13].kp_;
-        values[42] = joint_data[18].kp_;
-        values[43] = joint_data[19].kp_;
-        values[44] = joint_data[12].kd_;
-        values[45] = joint_data[13].kd_;
-        values[46] = joint_data[18].kd_;
-        values[47] = joint_data[19].kd_;
-        values[48] = joint_data[12].ff_;
-        values[49] = joint_data[13].ff_;
-        values[50] = joint_data[18].ff_;
-        values[51] = joint_data[19].ff_;
-        if (!ankleDebugBuffer_.push(pendingAnkleDebugSample_))
-        {
-          ankleDebugDropped_.fetch_add(1U, std::memory_order_relaxed);
-        }
-        ankleDebugSamplePending_ = false;
+        ankleDebugDropped_.fetch_add(1U, std::memory_order_relaxed);
       }
+      ankleDebugSamplePending_ = false;
     }
-
-    if(!ankle_motor_ready_flag_) {
-      joint_data[12].ff_ = 0.0;
-      joint_data[13].ff_ = 0.0;
-      joint_data[18].ff_ = 0.0;
-      joint_data[19].ff_ = 0.0;
-    }
-  
   }
 
-  void E2HW::parallel_waist_solve_state(E2MotorData joint_data[]) {
-    constexpr int kRollIndex = 21;
-    constexpr int kPitchIndex = 22;
-    constexpr double kMotorOffset = 0.4;
-    constexpr double kWaistSide = 0.0;
-
-    const double q_1 = joint_data[kRollIndex].pos_ + kMotorOffset;
-    const double q_2 = joint_data[kPitchIndex].pos_ + kMotorOffset;
-    const double dq_1 = joint_data[kRollIndex].vel_;
-    const double dq_2 = joint_data[kPitchIndex].vel_;
-    const double tor_1 = joint_data[kRollIndex].tau_;
-    const double tor_2 = joint_data[kPitchIndex].tau_;
-
-    waist_motor_ready_flag_ =
-        fabs(joint_data[kRollIndex].pos_) <= 3.14 &&
-        fabs(joint_data[kPitchIndex].pos_) <= 3.14;
-
-    double q_roll;
-    double q_pitch;
-    parallel_waist_fk(q_1, q_2, kWaistSide, &q_roll, &q_pitch);
-
-    double jacob[4];
-    parallel_waist_jacobian(q_roll, q_pitch, q_1, q_2, kWaistSide, 0, jacob);
-
-    double dq_roll;
-    double dq_pitch;
-    parallel_waist_fk_vel(dq_1, dq_2, jacob, kWaistSide, &dq_roll, &dq_pitch);
-
-    double tor_roll;
-    double tor_pitch;
-    parallel_waist_fd(tor_1, tor_2, jacob, kWaistSide, &tor_roll, &tor_pitch);
-
-    joint_data[kRollIndex].pos_ = q_roll;
-    joint_data[kPitchIndex].pos_ = q_pitch;
-    joint_data[kRollIndex].vel_ = dq_roll;
-    joint_data[kPitchIndex].vel_ = dq_pitch;
-    joint_data[kRollIndex].tau_ = tor_roll;
-    joint_data[kPitchIndex].tau_ = tor_pitch;
+  void E2HW::parallel_waist_solve_state(E2MotorData joint_data[])
+  {
+    waist.updateState(joint_data);
   }
 
-  void E2HW::parallel_waist_solve_cmd(E2MotorData joint_data[]) {
-    constexpr int kRollIndex = 21;
-    constexpr int kPitchIndex = 22;
-    constexpr double kWaistSide = 0.0;
-
-    const double q_roll = joint_data[kRollIndex].pos_;
-    const double q_pitch = joint_data[kPitchIndex].pos_;
-    const double dq_roll = joint_data[kRollIndex].vel_;
-    const double dq_pitch = joint_data[kPitchIndex].vel_;
-    const double tor_roll =
-        joint_data[kRollIndex].kp_ * (joint_data[kRollIndex].pos_des_ - q_roll) +
-        joint_data[kRollIndex].kd_ * (joint_data[kRollIndex].vel_des_ - dq_roll);
-    const double tor_pitch =
-        joint_data[kPitchIndex].kp_ * (joint_data[kPitchIndex].pos_des_ - q_pitch) +
-        joint_data[kPitchIndex].kd_ * (joint_data[kPitchIndex].vel_des_ - dq_pitch);
-
-    double q_1;
-    double q_2;
-    parallel_waist_ik(q_roll, q_pitch, kWaistSide, 0, &q_1, &q_2);
-
-    double jacob[4];
-    parallel_waist_jacobian(q_roll, q_pitch, q_1, q_2, kWaistSide, 0, jacob);
-
-    double dq_1;
-    double dq_2;
-    parallel_waist_ik_vel(q_roll, q_pitch, q_1, q_2, dq_roll, dq_pitch,
-                          kWaistSide, 0, &dq_1, &dq_2);
-
-    double tor_1;
-    double tor_2;
-    parallel_waist_id(tor_roll, tor_pitch, jacob, kWaistSide, &tor_1, &tor_2);
-
-    joint_data[kRollIndex].ff_ = waist_motor_ready_flag_ ? tor_1 : 0.0;
-    joint_data[kPitchIndex].ff_ = waist_motor_ready_flag_ ? tor_2 : 0.0;
+  void E2HW::parallel_waist_solve_cmd(E2MotorData joint_data[])
+  {
+    waist.applyCommand(joint_data);
   }
-  
-
-
-
 
 } // namespace legged

@@ -1,0 +1,90 @@
+# 并联踝/腰 pjsol 配置
+# 并联关节处的电机的标定：direction + zero_offset
+#   q_model = direction * (q_motor - zero_offset)
+# 其中：
+#   channel     : joint_data_ 索引（软件电机通道）
+#   direction   : +1 电机正向与解算正向一致，-1 电机正向与解算反向
+#   zero_offset : 模型零位对应电机的角度值
+# 
+# 注意单位： 长度m, 角度deg。
+
+left_ankle:
+  type: M2RSS1Ux
+  geom:
+    F1: [0.028, 0.0, 0.279916]
+    F2: [0.028, 0.0, 0.213916]
+    H1: [0.0295, 0.0188, -0.0055]
+    H2: [0.0295, -0.0188, -0.0055]
+    l1: 0.280
+    l2: 0.214
+    r: 0.020
+    e: 0.0
+  joint_limit:
+    q1_min: 21.2369
+    q1_max: 159.8631
+    q2_min: -159.8631
+    q2_max: -21.2369
+    sphere_angle_max: 15.0
+  drive_map:
+    q1:
+      channel: 13             
+      direction: 1            
+      zero_offset: -74.27106231209902
+    q2:
+      channel: 12             
+      direction: 1
+      zero_offset: 74.27508212554795
+
+right_ankle:
+  type: M2RSS1Ux
+  geom:
+    F1: [0.028, 0.0, 0.213916]
+    F2: [0.028, 0.0, 0.279916]
+    H1: [0.0295, 0.0188, -0.0055]
+    H2: [0.0295, -0.0188, -0.0055]
+    l1: 0.214
+    l2: 0.280
+    r: 0.020
+    e: 0.0
+  joint_limit:
+    q1_min: 21.2369
+    q1_max: 159.8631
+    q2_min: -159.8631
+    q2_max: -21.2369
+    sphere_angle_max: 15.0
+  drive_map:
+    q1:
+      channel: 19             
+      direction: 1
+      zero_offset: -74.27106231209902
+    q2:
+      channel: 18             
+      direction: 1
+      zero_offset: 74.27508212554795
+
+waist:
+  type: M2RSS1Uxi
+  geom:
+    F1: [0.037, 0.040, 0.0450085]
+    F2: [0.037, -0.040, 0.0450085]
+    H1: [0.0372, 0.030, -0.0138]
+    H2: [0.0372, -0.030, -0.0138]
+    l1: 0.060
+    l2: 0.060
+    r: 0.020
+    e: 0.0
+  joint_limit:
+    q1_min: -140.0
+    q1_max: -40.0
+    q2_min: 40.0
+    q2_max: 140.0
+    sphere_angle_max: 15.0
+  drive_map:
+    q1:
+      channel: 21             
+      direction: 1
+      zero_offset: 91.00984674180897
+    q2:
+      channel: 22             
+      direction: 1
+      zero_offset: -91.00984674180897

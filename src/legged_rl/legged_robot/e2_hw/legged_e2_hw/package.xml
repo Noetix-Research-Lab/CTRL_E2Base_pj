@@ -15,6 +15,6 @@
     <depend>roslib</depend>
     <depend>std_msgs</depend>
     <depend>legged_hw</depend>
-    <depend>parallel_solve</depend>
+    <depend>pjsol</depend>
     <exec_depend>message_runtime</exec_depend>
 </package>

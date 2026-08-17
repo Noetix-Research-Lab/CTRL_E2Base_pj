@@ -27,6 +27,7 @@ __pycache__/
 *.pyd
 *.bag
 *.csv
+!src/legged_rl/rl_controller/rl_controllers/trajectories/**/*.csv
 
 # Ignore ROS build artifacts
 build/

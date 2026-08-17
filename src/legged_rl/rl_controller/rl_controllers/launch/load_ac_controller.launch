@@ -13,6 +13,9 @@
   <arg name="enable_timing_metrics" default="false"/>
   <arg name="teleop_type" default="joy" doc="Teleop type: [sbus, joy]"/>
   <arg name="sbus_config_file" default="$(find rl_controllers)/config/sbus_wfly.yaml"/>
+  <arg name="csv_trajectory" default="false"
+       doc="If true, WALK plays multi_joint_csv_path instead of the ONNX walk policy"/>
+  <arg name="csv_path" default="trajectories/sim/arm/arm_wave_4s_500Hz.csv"/>
 
   <include if="$(eval arg('teleop_type') == 'sbus')" file="$(find rl_controllers)/launch/sbus_teleop.launch">
     <arg name="teleop_config" value="$(arg sbus_config_file)"/>
@@ -30,6 +33,10 @@
   <rosparam file="$(find rl_controllers)/config/controllers.yaml" command="load"/>
   <rosparam file="$(arg ac_config_file)" command="load"/>
   <param name="/LeggedRobotCfg/control/enable_timing_metrics" value="$(arg enable_timing_metrics)"/>
+  <group if="$(arg csv_trajectory)">
+    <param name="/LeggedRobotCfg/pdtest/command_mode" value="csv"/>
+    <param name="/LeggedRobotCfg/pdtest/multi_joint_csv_path" value="$(arg csv_path)"/>
+  </group>
   <node name="controller_spawner" pkg="controller_manager" type="spawner"
         respawn="false" output="screen" args="controllers/ac_controller"/>
 </launch>

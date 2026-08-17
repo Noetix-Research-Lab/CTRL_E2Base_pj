@@ -8,6 +8,20 @@ namespace legged
 {
 void AcController::handleWalkMode()
 {
+  if (csvTrajectoryPlayer_.enabled())
+  {
+    leavePolicyMode();
+    if (!csvPlaybackSessionActive_)
+    {
+      csvTrajectoryPlayer_.reset();
+      csvDiagnosticLogger_.resetForNextRun();
+      csv_log_start_pending_ = csvDiagnosticLogger_.loggingEnabled();
+      csvPlaybackSessionActive_ = true;
+    }
+    playCsvTrajectory();
+    return;
+  }
+  csvPlaybackSessionActive_ = false;
   enterPolicyMode(PolicyKind::WALK);
   auto& runtime = walkPolicy_.runtime();
   // if (propri_.projectedGravity(2) >= -0.3) {

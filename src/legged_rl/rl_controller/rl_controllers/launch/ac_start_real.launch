@@ -21,6 +21,9 @@
   <arg name="motion_file_up" default="$(find rl_controllers)/motion_files/e2/e2_up.json"/>
   <arg name="teleop_type" default="joy" doc="Teleop type: [sbus, joy]"/>
   <arg name="sbus_config_file" default="$(find rl_controllers)/config/sbus_wfly.yaml"/>
+  <arg name="csv_trajectory" default="false"
+       doc="If true, WALK plays multi_joint_csv_path instead of the ONNX walk policy"/>
+  <arg name="csv_path" default="trajectories/sim/arm/arm_wave_4s_500Hz.csv"/>
 
   <param name="robot_description" textfile="$(arg urdfFile)"/>
   <param name="/robot_model" value="$(arg robot_model)"/>
@@ -53,6 +56,8 @@
     <arg name="teleop_type" value="$(arg teleop_type)"/>
     <arg name="sbus_config_file" value="$(arg sbus_config_file)"/>
     <arg name="enable_timing_metrics" value="$(arg record_timing)"/>
+    <arg name="csv_trajectory" value="$(arg csv_trajectory)"/>
+    <arg name="csv_path" value="$(arg csv_path)"/>
   </include>
 
   <node if="$(arg record_timing)" name="rl_timing_recorder"

@@ -6,6 +6,8 @@
 #include "rl_controllers/PolicyInferenceRuntimeState.h"
 #include "rl_controllers/policies/WalkPolicy.h"
 #include "rl_controllers/policies/DancePolicy.h"
+#include "rl_controllers/PdTrajectoryPlayer.h"
+#include "rl_controllers/PdTrajectoryDiagnosticLogger.h"
 #include <legged_common/SpscRingBuffer.h>
 
 #include <array>
@@ -240,6 +242,20 @@ namespace legged
     void publishTrace(const ros::Publisher& publisher,
                       const std::vector<tensor_element_t>& data,
                       size_t size) const;
+
+    // ===================== pdtest / CSV trajectory =====================
+    bool loadPdTestConfig(ros::NodeHandle& nh);
+    void buildControlJointMaps();
+    void applyPdTestDefaultJointAngles(ros::NodeHandle& nh);
+    void applyPdTestAnklePdOverride(ros::NodeHandle& nh);
+    void playCsvTrajectory();
+    void endCsvPlaybackSession();
+
+    PdTrajectoryPlayer csvTrajectoryPlayer_;
+    PdTrajectoryDiagnosticLogger csvDiagnosticLogger_;
+    PdTrajectoryControlMaps controlJointMaps_;
+    bool csv_log_start_pending_{false};
+    bool csvPlaybackSessionActive_{false};
   };
 
 } // namespace legged

@@ -29,3 +29,36 @@ rosrun rl_controllers detect_cpu_topology.py
 
 同步/异步时序比较使用 `record_inference_timing.py`，并通过启动参数
 `record_timing:=true` 开启控制器与硬件时序发布。
+
+## CSV 轨迹回放（仿真 pdtest）
+
+`pdtest.command_mode` 默认为 `policy`（WALK 走 ONNX）。设为 `csv` 后，
+STAND → WALK 不再跑策略，而是用 PD 跟踪 `multi_joint_csv_path` 中的绝对关节角。
+CSV 必须有 `time` 列，其余列用 E2 URDF 关节名（也兼容 E1 简写，如 `arm_l1_joint`）。
+未出现的关节在进入 WALK 时锁存当前角度。轨迹按 500 Hz 采样，与控制周期一致。
+
+仿真测试一段左手挥手轨迹：
+
+```bash
+roslaunch rl_controllers ac_start.launch csv_trajectory:=true
+```
+
+启动后：开始控制 → `switch_mode` 切到站立 → `walk_mode` 进入轨迹。
+也可用 topic：
+
+```bash
+rostopic pub /start_control std_msgs/Float32 "data: 2.0"
+rostopic pub /switch_mode std_msgs/Float32 "data: 2.0"   # LIE -> STAND
+# 等待站立过渡结束后
+rostopic pub /walk_mode std_msgs/Float32 "data: 2.0"
+```
+
+示例轨迹：
+
+生成脚本按 `DURATION` / `DT` 命名输出文件（例如 `arm_wave_4s_500Hz.csv`）。改时长后需同步 `pdtest.multi_joint_csv_path`。
+
+- 手臂挥手：`scripts/generate_e2_arm_wave_csv.py`
+- 脚踝正弦：`scripts/generate_e2_ankle_sine_csv.py`
+- 腰部正弦：`scripts/generate_e2_waist_sine_csv.py`
+
+回放诊断日志默认写到 `rl_controllers/logs/run/`。

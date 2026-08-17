@@ -12,6 +12,7 @@ void RLControllerBase::handleDefaultMode()
 void AcController::handleDefaultMode()
 {
   leavePolicyMode();
+  endCsvPlaybackSession();
   RLControllerBase::handleDefaultMode();
 }
 }  // namespace legged

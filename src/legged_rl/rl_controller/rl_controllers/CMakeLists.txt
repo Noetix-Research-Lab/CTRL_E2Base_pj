@@ -86,6 +86,9 @@ add_library(${PROJECT_NAME}
         src/policies/UpMode.cpp
         src/RLControllerBase.cpp
         src/AcController.cpp
+        src/PdTrajectoryLoader.cpp
+        src/PdTrajectoryPlayer.cpp
+        src/PdTrajectoryDiagnosticLogger.cpp
         src/utilities.cpp
         )
 
@@ -110,6 +113,15 @@ if(CATKIN_ENABLE_TESTING)
                 test/policy_playback_clock_test.cpp)
         if(TARGET policy_playback_clock_test)
                 target_include_directories(policy_playback_clock_test PRIVATE include)
+        endif()
+        catkin_add_gtest(pd_trajectory_loader_test
+                test/pd_trajectory_loader_test.cpp
+                src/PdTrajectoryLoader.cpp)
+        if(TARGET pd_trajectory_loader_test)
+                target_include_directories(pd_trajectory_loader_test PRIVATE include)
+                target_compile_definitions(pd_trajectory_loader_test PRIVATE
+                        TEST_ARM_WAVE_CSV="${CMAKE_CURRENT_SOURCE_DIR}/trajectories/sim/arm/arm_wave_4s_500Hz.csv")
+                target_link_libraries(pd_trajectory_loader_test ${catkin_LIBRARIES})
         endif()
         catkin_add_gtest(realtime_buffers_stress_test
                 test/realtime_buffers_stress_test.cpp
@@ -211,4 +223,7 @@ catkin_install_python(PROGRAMS
 
 install(FILES rl_controllers_plugins.xml
         DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+        )
+install(DIRECTORY trajectories/
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/trajectories
         )

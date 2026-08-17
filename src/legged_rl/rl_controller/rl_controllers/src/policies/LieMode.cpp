@@ -36,6 +36,7 @@ void RLControllerBase::handleLieMode()
 void AcController::handleLieMode()
 {
   leavePolicyMode();
+  endCsvPlaybackSession();
   RLControllerBase::handleLieMode();
 }
 }  // namespace legged

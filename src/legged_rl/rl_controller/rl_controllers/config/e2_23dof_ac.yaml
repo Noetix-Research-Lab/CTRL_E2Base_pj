@@ -84,3 +84,27 @@ LeggedRobotCfg:
     observations_dance_size: 124
     stack_size: 5
     stack_size_dance: 5
+
+  pdtest:
+    # policy: ONNX walk (default)
+    # csv: play multi_joint_csv_path after STAND -> WALK; columns name joints
+    #      directly (E2 URDF names or E1 aliases). CSV values are absolute
+    #      joint angles; joints missing from CSV hold pose at WALK entry.
+    default_joint_angles_from_policy: true
+    multi_joint_hold_missing_at_current: true
+    ankle_pd_override:
+      enabled: false
+      kp: 50.0
+      kd: 1.0
+    command_mode: csv
+    transition_duration: 3.0
+    # Waist roll/pitch 500 Hz sine. Enable with:
+    #   roslaunch rl_controllers ac_start.launch csv_trajectory:=true
+    multi_joint_csv_path: "trajectories/sim/ankle/ankle_sine_10s_500Hz.csv"
+    multi_joint_use_csv_desired_velocity: false
+    multi_joint_default_desired_velocity: 0.0
+    log_enabled: true
+    log_duration: 0          # 0 = record until playback finishes
+    sample_interval: 0.002   # 500 Hz log row spacing (matches CSV dt)
+    log_prefix: PD-E2-v0
+    log_dir: ""              # default: rl_controllers/logs/run

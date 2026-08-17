@@ -470,6 +470,10 @@ namespace legged
       }
     }
 
+    buildControlJointMaps();
+    if (!loadPdTestConfig(nh)) {
+      return false;
+    }
     return true;
   }
 
@@ -1068,8 +1072,151 @@ namespace legged
   }
 
   // ================================================================
-  //  Dance policy / observation
+  //  pdtest / CSV trajectory
   // ================================================================
+  void AcController::buildControlJointMaps()
+  {
+    const auto& policy_joint_names = walkPolicy_.metadata().jointNames();
+    const auto& default_joint_pos = walkPolicy_.metadata().defaultPosition();
+    const auto& joint_stiffness = walkPolicy_.metadata().stiffness();
+    const auto& joint_damping = walkPolicy_.metadata().damping();
+
+    controlJointMaps_.default_joint_angles.assign(jointNames_.size(), 0.0);
+    controlJointMaps_.joint_stiffness.assign(jointNames_.size(), 0.0);
+    controlJointMaps_.joint_damping.assign(jointNames_.size(), 0.0);
+    for (size_t i = 0; i < jointNames_.size(); ++i)
+    {
+      const auto it = std::find(policy_joint_names.begin(), policy_joint_names.end(),
+                                jointNames_[i]);
+      if (it == policy_joint_names.end())
+      {
+        ROS_WARN_STREAM("[AcController] control joint not found in walk metadata: " << jointNames_[i]);
+        continue;
+      }
+      const size_t policy_idx = static_cast<size_t>(std::distance(policy_joint_names.begin(), it));
+      if (policy_idx < default_joint_pos.size())
+      {
+        controlJointMaps_.default_joint_angles[i] = default_joint_pos[policy_idx];
+      }
+      if (policy_idx < joint_stiffness.size())
+      {
+        controlJointMaps_.joint_stiffness[i] = joint_stiffness[policy_idx];
+      }
+      if (policy_idx < joint_damping.size())
+      {
+        controlJointMaps_.joint_damping[i] = joint_damping[policy_idx];
+      }
+    }
+  }
+
+  void AcController::applyPdTestDefaultJointAngles(ros::NodeHandle& nh)
+  {
+    bool from_policy = true;
+    nh.param("/LeggedRobotCfg/pdtest/default_joint_angles_from_policy", from_policy, true);
+    if (from_policy)
+    {
+      return;
+    }
+    std::fill(controlJointMaps_.default_joint_angles.begin(),
+              controlJointMaps_.default_joint_angles.end(), 0.0);
+    ROS_INFO("[AcController] pdtest default_joint_angles: all 0 (from_policy=false)");
+  }
+
+  void AcController::applyPdTestAnklePdOverride(ros::NodeHandle& nh)
+  {
+    bool enabled = false;
+    nh.param("/LeggedRobotCfg/pdtest/ankle_pd_override/enabled", enabled, false);
+    if (!enabled)
+    {
+      return;
+    }
+
+    double kp = -1.0;
+    double kd = -1.0;
+    nh.param("/LeggedRobotCfg/pdtest/ankle_pd_override/kp", kp, -1.0);
+    nh.param("/LeggedRobotCfg/pdtest/ankle_pd_override/kd", kd, -1.0);
+    if (kp < 0.0 || kd < 0.0)
+    {
+      ROS_WARN("[AcController] pdtest ankle_pd_override enabled but kp/kd invalid; skipping");
+      return;
+    }
+
+    static const char* kAnkleJoints[] = {
+        "l_leg_ankle_pitch_joint", "l_leg_ankle_roll_joint",
+        "r_leg_ankle_pitch_joint", "r_leg_ankle_roll_joint",
+    };
+    for (const char* joint_name : kAnkleJoints)
+    {
+      const auto it = std::find(jointNames_.begin(), jointNames_.end(), joint_name);
+      if (it == jointNames_.end())
+      {
+        ROS_WARN_STREAM("[AcController] pdtest ankle_pd_override: joint not found: " << joint_name);
+        continue;
+      }
+      const size_t idx = static_cast<size_t>(std::distance(jointNames_.begin(), it));
+      controlJointMaps_.joint_stiffness[idx] = kp;
+      controlJointMaps_.joint_damping[idx] = kd;
+      ROS_INFO_STREAM("[AcController] pdtest ankle_pd_override: " << joint_name
+                      << " kp=" << kp << " kd=" << kd);
+    }
+  }
+
+  bool AcController::loadPdTestConfig(ros::NodeHandle& nh)
+  {
+    applyPdTestDefaultJointAngles(nh);
+    applyPdTestAnklePdOverride(nh);
+    csvDiagnosticLogger_.configure(nh, jointNames_);
+    csv_log_start_pending_ = csvDiagnosticLogger_.loggingEnabled();
+    return csvTrajectoryPlayer_.configure(nh, jointNames_, controlJointMaps_);
+  }
+
+  void AcController::endCsvPlaybackSession()
+  {
+    csvPlaybackSessionActive_ = false;
+  }
+
+  void AcController::playCsvTrajectory()
+  {
+    constexpr double kHwDt = 0.002;
+    const bool is_sample_step = true;
+    std::vector<double> current_pos(hybridJointHandles_.size());
+    for (size_t i = 0; i < hybridJointHandles_.size(); ++i)
+    {
+      current_pos[i] = hybridJointHandles_[i].getPosition();
+    }
+    csvTrajectoryPlayer_.update(kHwDt, is_sample_step, current_pos);
+
+    if (csvTrajectoryPlayer_.playbackStarted())
+    {
+      if (csv_log_start_pending_)
+      {
+        csvDiagnosticLogger_.maybeStart(csvTrajectoryPlayer_.resolvedCsvPath(),
+                                        csvTrajectoryPlayer_.sampleInterval());
+        csv_log_start_pending_ = false;
+      }
+    }
+
+    for (size_t i = 0; i < hybridJointHandles_.size(); ++i)
+    {
+      hybridJointHandles_[i].setCommand(
+          csvTrajectoryPlayer_.posDes(i),
+          csvTrajectoryPlayer_.velDes(i),
+          csvTrajectoryPlayer_.stiffness(i),
+          csvTrajectoryPlayer_.damping(i),
+          0.0);
+    }
+
+    if (csvTrajectoryPlayer_.playbackStarted())
+    {
+      csvDiagnosticLogger_.writeSampleIfActive(hybridJointHandles_, csvTrajectoryPlayer_, kHwDt);
+    }
+
+    if (csvTrajectoryPlayer_.finished())
+    {
+      csvDiagnosticLogger_.finalize("playback finished");
+    }
+  }
+
 } // namespace legged
 
 PLUGINLIB_EXPORT_CLASS(legged::AcControllerPlugin, controller_interface::ControllerBase)

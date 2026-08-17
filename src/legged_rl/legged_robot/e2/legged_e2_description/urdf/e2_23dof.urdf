@@ -19,6 +19,18 @@
       <rpyOffsets>0 0 0</rpyOffsets>
     </plugin>
   </gazebo>
+
+  <!-- Fix base_link to the Gazebo world so the torso is suspended. -->
+  <link name="world"/>
+  <joint name="world_to_base" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+  <gazebo reference="world_to_base">
+    <disableFixedJointLumping>true</disableFixedJointLumping>
+  </gazebo>
+
   <link name="base_link">
     <inertial>
       <origin xyz="0.0012702 1.8808E-06 0.088527" rpy="0 0 0" />
